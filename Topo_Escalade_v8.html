@@ -1,0 +1,1339 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Topo Escalade">
+    <meta name="theme-color" content="#111111">
+    <title>Topo Escalade</title>
+    <style>
+        :root {
+            --bg: #111;
+            --surface: #1c1c1e;
+            --surface2: #2c2c2e;
+            --border: #3a3a3c;
+            --text: #f2f2f7;
+            --text2: #8e8e93;
+            --green: #30d158;
+            --blue: #0a84ff;
+            --red: #ff453a;
+            --yellow: #ffd60a;
+            --orange: #ff9f0a;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html {
+            height: -webkit-fill-available;
+        }
+        body {
+            font-family: -apple-system, 'SF Pro Display', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0; padding: 0;
+            /* Plein écran : couvre les barres du navigateur */
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            /* Respecter les encoches/bords arrondis */
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
+        }
+
+        /* TOOLBAR */
+        .toolbar {
+            background: var(--surface);
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            z-index: 100;
+        }
+        .toolbar button, .toolbar label {
+            background: var(--surface2);
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 7px 11px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+            transition: opacity 0.15s;
+            touch-action: manipulation;
+            -webkit-touch-callout: none;
+        }
+        .toolbar button:active, .toolbar label:active { opacity: 0.6; }
+        .btn-save { background: var(--green) !important; color: #000 !important; border-color: var(--green) !important; }
+        .btn-update { background: var(--orange) !important; color: #000 !important; border-color: var(--orange) !important; }
+        .btn-export { background: var(--blue) !important; border-color: var(--blue) !important; }
+        .btn-reset { background: var(--red) !important; border-color: var(--red) !important; }
+        .mode-indicator {
+            margin-left: auto;
+            font-size: 11px;
+            color: var(--text2);
+            background: var(--surface2);
+            padding: 5px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+        }
+        .legend {
+            display: flex; gap: 8px; align-items: center;
+            font-size: 10px; color: var(--text2);
+        }
+        .leg { display: flex; align-items: center; gap: 3px; }
+        .leg-dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid; }
+
+        /* CANVAS AREA */
+        .canvas-area {
+            flex: 1;
+            position: relative;
+            background: #000;
+            overflow: hidden;
+            touch-action: none;
+            min-height: 60px;
+        }
+        canvas {
+            position: absolute;
+            top: 0; left: 0;
+            transform-origin: 0 0;
+            cursor: crosshair;
+            touch-action: none;
+        }
+        .canvas-placeholder {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text2);
+            gap: 10px;
+            pointer-events: none;
+        }
+        .canvas-placeholder .icon { font-size: 48px; opacity: 0.4; }
+        .canvas-placeholder p { font-size: 13px; margin: 0; }
+
+        /* SÉPARATEUR REDIMENSIONNABLE */
+        .divider {
+            height: 18px;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: ns-resize;
+            touch-action: none;
+            flex-shrink: 0;
+            z-index: 10;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .divider-handle {
+            width: 36px; height: 4px;
+            border-radius: 2px;
+            background: var(--border);
+            transition: all 0.15s;
+        }
+        .divider.dragging .divider-handle {
+            background: var(--blue);
+            width: 48px;
+        }
+
+        /* LIST PANEL */
+        .panel {
+            background: var(--surface);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            overflow: hidden;
+            /* hauteur initiale gérée par JS */
+        }
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .panel-title {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .carnet-btns {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+        .btn-carnet {
+            background: var(--surface2);
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 4px 9px;
+            border-radius: 7px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            touch-action: manipulation;
+            white-space: nowrap;
+        }
+        .btn-carnet-load { border-color: var(--blue); color: var(--blue); background: rgba(10,132,255,0.1); }
+        .btn-carnet-save { border-color: var(--green); color: var(--green); background: rgba(48,209,88,0.1); }
+        .filter-row {
+            display: flex;
+            gap: 5px;
+            padding: 6px 10px;
+            overflow-x: auto;
+            flex-shrink: 0;
+            border-bottom: 1px solid var(--border);
+            -webkit-overflow-scrolling: touch;
+        }
+        .filter-row::-webkit-scrollbar { display: none; }
+        .filter-btn {
+            background: var(--surface2);
+            color: var(--text2);
+            border: 1px solid var(--border);
+            padding: 4px 10px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+            transition: all 0.15s;
+            touch-action: manipulation;
+            -webkit-touch-callout: none;
+            flex-shrink: 0;
+            min-height: 28px;
+        }
+        .filter-btn.active {
+            background: var(--blue);
+            color: #fff;
+            border-color: var(--blue);
+        }
+        .filter-btn-reset.active {
+            background: var(--surface2);
+            color: var(--text2);
+            border-color: var(--border);
+        }
+        .filter-btn-reset {
+            background: var(--surface2);
+            color: var(--text2);
+            border: 1px solid var(--border);
+            padding: 4px 10px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+            touch-action: manipulation;
+            flex-shrink: 0;
+            min-height: 28px;
+        }
+        .blocs-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 6px 8px;
+            -webkit-overflow-scrolling: touch;
+        }
+        .blocs-list::-webkit-scrollbar { width: 4px; }
+        .blocs-list::-webkit-scrollbar-track { background: transparent; }
+        .blocs-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        .bloc-item {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+            padding: 7px 10px;
+            gap: 8px;
+            cursor: pointer;
+            transition: border-color 0.15s;
+            touch-action: manipulation;
+        }
+        .bloc-item:active { opacity: 0.7; }
+        .bloc-thumb {
+            width: 40px; height: 40px;
+            border-radius: 5px;
+            object-fit: cover;
+            flex-shrink: 0;
+            background: var(--border);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 14px;
+            overflow: hidden;
+        }
+        .bloc-thumb img { width: 100%; height: 100%; object-fit: cover; }
+        .bloc-info { flex: 1; min-width: 0; }
+        .bloc-name { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .bloc-meta { font-size: 10px; color: var(--text2); margin-top: 2px; }
+        .bloc-level {
+            font-size: 11px; font-weight: 800;
+            padding: 2px 7px; border-radius: 5px;
+            flex-shrink: 0;
+        }
+        .level-jaune  { background: rgba(255,214,10,0.2);   color: var(--yellow); }
+        .level-bleu   { background: rgba(10,132,255,0.2);   color: var(--blue); }
+        .level-vert   { background: rgba(48,209,88,0.2);    color: var(--green); }
+        .level-rouge  { background: rgba(255,69,58,0.2);    color: var(--red); }
+        .level-orange { background: rgba(255,159,10,0.2);   color: var(--orange); }
+        .level-noir   { background: rgba(200,200,200,0.15); color: #ccc; }
+        .statut-dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .statut-realise { background: var(--green); }
+        .statut-projet   { background: var(--orange); }
+        .btn-del {
+            background: none; border: none; color: var(--red);
+            font-size: 15px; padding: 6px; cursor: pointer; flex-shrink: 0;
+            touch-action: manipulation;
+            min-width: 30px; min-height: 30px;
+        }
+        .empty-msg { color: var(--text2); font-size: 12px; text-align: center; padding: 20px; }
+
+        /* MODAL */
+        .modal-overlay {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 500;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            width: 88%;
+            max-width: 380px;
+        }
+        .modal h3 { margin: 0 0 14px; font-size: 16px; }
+        .modal input, .modal select, .modal textarea {
+            width: 100%;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 9px 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-bottom: 8px;
+            outline: none;
+        }
+        .modal textarea { height: 64px; resize: none; }
+        .modal .btn-confirm {
+            width: 100%;
+            padding: 12px;
+            background: var(--green);
+            color: #000;
+            border: none;
+            border-radius: 9px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 4px;
+            touch-action: manipulation;
+        }
+        .modal .btn-cancel {
+            width: 100%;
+            padding: 10px;
+            background: var(--surface2);
+            color: var(--text2);
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            font-size: 13px;
+            cursor: pointer;
+            margin-top: 6px;
+            touch-action: manipulation;
+        }
+
+        /* LOAD MODAL */
+        .load-preview {
+            max-height: 150px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            -webkit-overflow-scrolling: touch;
+        }
+        .load-preview-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px;
+            background: var(--surface2);
+            border-radius: 6px;
+            margin-bottom: 5px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            touch-action: manipulation;
+        }
+        .load-preview-item.selected { border-color: var(--blue); }
+        .load-preview-thumb { width: 36px; height: 36px; border-radius: 4px; object-fit: cover; }
+        .load-preview-info { font-size: 12px; }
+
+        /* Feedback visuel tap */
+        .tap-flash {
+            position: absolute;
+            width: 30px; height: 30px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.3);
+            pointer-events: none;
+            transform: translate(-50%,-50%) scale(0);
+            animation: tapFlash 0.3s ease-out forwards;
+            z-index: 50;
+        }
+        @keyframes tapFlash {
+            0%   { transform: translate(-50%,-50%) scale(0); opacity: 1; }
+            100% { transform: translate(-50%,-50%) scale(2); opacity: 0; }
+        }
+    </style>
+    <!-- Manifest inline pour PWA / plein écran installé -->
+    <link rel="manifest" href="data:application/json,{%22name%22:%22Topo%20Escalade%22,%22short_name%22:%22Topo%22,%22display%22:%22standalone%22,%22background_color%22:%22%23111111%22,%22theme_color%22:%22%23111111%22,%22orientation%22:%22portrait%22}">
+<link rel="manifest" href="manifest.json">
+</head>
+<body>
+<script>
+// Enregistrement du Service Worker pour le mode hors-ligne
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+            .then(reg => console.log('Service Worker enregistré !'))
+            .catch(err => console.log('Erreur SW:', err));
+    });
+}
+// ── Masquer les barres navigateur dès le chargement ─────────────────────────
+// Sur Android Chrome : scroll de 1px suffit à déclencher le mode plein écran
+(function() {
+    function tryHide() {
+        // Forcer un scroll minimal pour déclencher le full-screen du navigateur
+        window.scrollTo(0, 1);
+        // Remettre immédiatement à 0 pour ne pas décaler le contenu
+        setTimeout(() => window.scrollTo(0, 0), 50);
+    }
+    // Au chargement initial
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', tryHide);
+    } else {
+        tryHide();
+    }
+    // À chaque retour sur la page (ex: depuis une autre app)
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) tryHide();
+    });
+    // Premier touch : re-déclencher si les barres sont réapparues
+    document.addEventListener('touchstart', function onFirstTouch() {
+        tryHide();
+        document.removeEventListener('touchstart', onFirstTouch);
+    }, { passive: true, once: true });
+})();
+</script>
+
+<div class="toolbar">
+    <!-- Chargement image du mur -->
+    <label for="uploadImg" ontouchend="this.click(); return false;">📷 Photo mur</label>
+    <input type="file" id="uploadImg" accept="image/*" style="display:none" onchange="initImage(this)">
+    <!-- Chargement JSON des prises -->
+    <label for="uploadJson" ontouchend="this.click(); return false;">📌 JSON prises</label>
+    <input type="file" id="uploadJson" accept=".json,application/json" style="display:none" onchange="loadJsonHolds(this)">
+    <button class="btn-save" ontouchend="openSaveModal(); return false;" onclick="openSaveModal()">💾 Sauver</button>
+    <button class="btn-update" id="btnUpdate" ontouchend="openUpdateModal(); return false;" onclick="openUpdateModal()" style="display:none">✏️ Modifier</button>
+    <button class="btn-export" ontouchend="downloadImage(); return false;" onclick="downloadImage()">🖼️ Export</button>
+    <button class="btn-reset" ontouchend="resetAll(); return false;" onclick="resetAll()">🗑️ Reset</button>
+    <div class="legend">
+        <div class="leg"><div class="leg-dot" style="border-color:#30d158"></div><span>Départ</span></div>
+        <div class="leg"><div class="leg-dot" style="border-color:#0a84ff"></div><span>Main</span></div>
+        <div class="leg"><div class="leg-dot" style="border-color:#ff453a"></div><span>Top</span></div>
+        <div class="leg"><div class="leg-dot" style="border-color:#ffd60a"></div><span>Pied</span></div>
+        <span style="font-size:9px;color:var(--text2);margin-left:2px">2×tap=cycle · 3×tap=pied</span>
+    </div>
+</div>
+
+
+<div class="canvas-area" id="viewport">
+    <canvas id="canvas"></canvas>
+    <div class="canvas-placeholder" id="placeholder">
+        <div class="icon">🧗</div>
+        <p>1. <strong>📷 Photo mur</strong> — charger la photo du mur</p>
+        <p>2. <strong>📌 JSON prises</strong> — charger le fichier de positions</p>
+        <p style="font-size:11px;margin-top:8px">2× tap : prise main &nbsp;|&nbsp; 3× tap : prise de pied</p>
+        <p style="font-size:11px">Appui long sur prise sélectionnée : supprimer</p>
+        <p style="font-size:11px">Appui long sur zone vide : ajouter une prise</p>
+    </div>
+</div>
+
+<!-- Séparateur glissable -->
+<div class="divider" id="divider">
+    <div class="divider-handle"></div>
+</div>
+
+<div class="panel" id="panel">
+    <div class="panel-header">
+        <span class="panel-title">📖 Mon Carnet</span>
+        <div class="carnet-btns">
+            <label class="btn-carnet btn-carnet-load" for="uploadCarnet" ontouchend="this.click(); return false;" title="Charger carnet_blocs.json">📂 Charger</label>
+            <input type="file" id="uploadCarnet" accept=".json,application/json" style="display:none" onchange="importCarnet(this)">
+            <button class="btn-carnet btn-carnet-save" ontouchend="exportCarnet(); return false;" onclick="exportCarnet()" title="Enregistrer carnet_blocs.json">💾 Carnet</button>
+            <span id="blocCount" style="font-size:11px; color:var(--text2); margin-left:4px">0 bloc(s)</span>
+        </div>
+    </div>
+    <div class="filter-row" id="filterRow">
+        <button class="filter-btn-reset" id="btnResetFilter" ontouchend="resetFilters(event)" onclick="resetFilters(event)">Tous</button>
+        <button class="filter-btn" data-filter="Réalisé" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">✅ Réalisé</button>
+        <button class="filter-btn" data-filter="Projet" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">🔴 Projet</button>
+        <button class="filter-btn" data-filter="4" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">Jaune</button>
+        <button class="filter-btn" data-filter="5" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">Bleu</button>
+        <button class="filter-btn" data-filter="6A" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">6A</button>
+        <button class="filter-btn" data-filter="6A+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">6A+</button>
+        <button class="filter-btn" data-filter="6B" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">6B</button>
+        <button class="filter-btn" data-filter="6B+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">6B+</button>
+        <button class="filter-btn" data-filter="6C" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">6C</button>
+        <button class="filter-btn" data-filter="6C+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">6C+</button>
+        <button class="filter-btn" data-filter="7A" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">7A</button>
+        <button class="filter-btn" data-filter="7A+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">7A+</button>
+        <button class="filter-btn" data-filter="7B" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">7B</button>
+        <button class="filter-btn" data-filter="7B+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">7B+</button>
+        <button class="filter-btn" data-filter="7C" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">7C</button>
+        <button class="filter-btn" data-filter="7C+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">7C+</button>
+        <button class="filter-btn" data-filter="8A" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">8A</button>
+        <button class="filter-btn" data-filter="8A+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">8A+</button>
+        <button class="filter-btn" data-filter="8B" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">8B</button>
+        <button class="filter-btn" data-filter="8B+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">8B+</button>
+    </div>
+    <div class="blocs-list" id="itemsWrapper"></div>
+</div>
+
+<!-- Save / Update Modal (partagé) -->
+<div class="modal-overlay" id="saveModal">
+    <div class="modal">
+        <h3 id="saveModalTitle">💾 Enregistrer le bloc</h3>
+        <input type="text" id="blocName" placeholder="Nom du bloc">
+        <select id="blocLevel">
+            <option value="4">4 - Jaune</option>
+            <option value="5">5 - Bleu</option>
+            <option value="6A">6A</option>
+            <option value="6A+">6A+</option>
+            <option value="6B">6B</option>
+            <option value="6B+">6B+</option>
+            <option value="6C">6C</option>
+            <option value="6C+">6C+</option>
+            <option value="7A">7A</option>
+            <option value="7A+">7A+</option>
+            <option value="7B">7B</option>
+            <option value="7B+">7B+</option>
+            <option value="7C">7C</option>
+            <option value="7C+">7C+</option>
+            <option value="8A">8A</option>
+            <option value="8A+">8A+</option>
+            <option value="8B">8B</option>
+            <option value="8B+">8B+</option>
+        </select>
+        <select id="blocStatus">
+            <option value="Projet">🔴 Projet</option>
+            <option value="Réalisé">✅ Réalisé</option>
+        </select>
+        <textarea id="blocComment" placeholder="Commentaire, beta, conseil..."></textarea>
+        <button class="btn-confirm" id="saveModalConfirmBtn" ontouchend="saveModalConfirm(); return false;" onclick="saveModalConfirm()">Confirmer l'enregistrement</button>
+        <button class="btn-cancel" ontouchend="closeSaveModal(); return false;" onclick="closeSaveModal()">Annuler</button>
+    </div>
+</div>
+
+<!-- Load Modal -->
+<div class="modal-overlay" id="loadModal">
+    <div class="modal">
+        <h3>📂 Charger un bloc</h3>
+        <div class="load-preview" id="loadPreview"></div>
+        <button class="btn-confirm" ontouchend="confirmLoad(); return false;" onclick="confirmLoad()">Charger ce bloc</button>
+        <button class="btn-cancel" ontouchend="document.getElementById('loadModal').classList.remove('open'); return false;" onclick="document.getElementById('loadModal').classList.remove('open')">Annuler</button>
+    </div>
+</div>
+
+<script>
+// ─── DONNÉES ───────────────────────────────────────────────────────────────
+// Les prises sont chargées dynamiquement via le fichier JSON (bouton 📌 JSON prises)
+// Aucune prise codée en dur — tout vient des fichiers chargés par l'utilisateur.
+
+// ─── ÉTAT ──────────────────────────────────────────────────────────────────
+const canvas  = document.getElementById('canvas');
+const ctx     = canvas.getContext('2d');
+const vp      = document.getElementById('viewport');
+let img       = new Image();
+let holds     = []; // chargées via JSON
+let pathData  = [];
+let imgDataURL = null;
+
+let scale = 1, offset = {x:0, y:0};
+let lastDist = 0, lastFocus = {x:0,y:0}, lastTouchPos = {x:0,y:0};
+let pressTimer = null;
+let tapCount = 0, tapTimer = null;
+let firstTapPos = null;
+let activeFilters = new Set(); // multi-select
+let loadSelectedId = null;
+let isLongPress = false;
+let touchStartPos = {x:0, y:0};
+let currentBlocId = null; // id du bloc actuellement chargé (null = nouveau)
+
+// ─── IMAGE ─────────────────────────────────────────────────────────────────
+function initImage(input) {
+    if (!input.files[0]) return;
+    const fileName = input.files[0].name;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        imgDataURL = e.target.result;
+        img = new Image();
+        img.onload = () => {
+            scale = vp.clientWidth / img.width;
+            offset = {x:0, y:0};
+            canvas.width  = img.width;
+            canvas.height = img.height;
+            document.getElementById('placeholder').style.display = 'none';
+            updateTransform();
+            draw();
+        };
+        img.src = imgDataURL;
+    };
+    reader.readAsDataURL(input.files[0]);
+}
+
+// ─── CHARGEMENT JSON DES PRISES ─────────────────────────────────────────────
+// Formats acceptés :
+//   1. Array direct : [{x, y, r}, ...]
+//   2. Objet avec clé "holds"  : {"holds": [{x, y, r}, ...]}
+//   3. Objet avec clé "prises" : {"prises": [{x, y, r}, ...]}
+//   4. Coordonnées pixel (si pas de r ou si valeurs > 100) → converties en %
+function loadJsonHolds(input) {
+    if (!input.files[0]) return;
+    const fileName = input.files[0].name;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        let raw;
+        try {
+            raw = JSON.parse(e.target.result);
+        } catch(err) {
+            alert('Fichier JSON invalide :\n' + err.message);
+            return;
+        }
+
+        // Extraire le tableau de prises selon le format
+        let arr = null;
+        if (Array.isArray(raw)) {
+            arr = raw;
+        } else if (raw && Array.isArray(raw.holds)) {
+            arr = raw.holds;
+        } else if (raw && Array.isArray(raw.prises)) {
+            arr = raw.prises;
+        } else if (raw && Array.isArray(raw.points)) {
+            arr = raw.points;
+        } else if (raw && Array.isArray(raw.holds_positions)) {
+            arr = raw.holds_positions;
+        } else {
+            // Chercher la première propriété qui est un tableau
+            const firstArr = Object.values(raw).find(v => Array.isArray(v));
+            if (firstArr) arr = firstArr;
+        }
+
+        if (!arr || arr.length === 0) {
+            alert('Impossible de trouver les positions des prises dans ce fichier JSON.\nFormats supportés :\n• [{x, y, r}, ...]\n• {"holds": [{x, y, r}, ...]}\n• {"prises": [...]}');
+            return;
+        }
+
+        // Normaliser chaque prise
+        const parsed = [];
+        arr.forEach((item, i) => {
+            // Accepter x/y ou cx/cy ou left/top ou px/py
+            const rawX = item.x ?? item.cx ?? item.left ?? item.px ?? null;
+            const rawY = item.y ?? item.cy ?? item.top  ?? item.py ?? null;
+            if (rawX === null || rawY === null) return;
+
+            let x = parseFloat(rawX);
+            let y = parseFloat(rawY);
+            let r = parseFloat(item.r ?? item.radius ?? item.size ?? 1.5);
+
+            // Détecter si les coordonnées sont en pixels (valeurs > 100)
+            // → convertir en % sur la base de la taille de l'image chargée
+            const needsConvert = (x > 100 || y > 100);
+            if (needsConvert) {
+                // Si l'image est chargée, utiliser ses dimensions ; sinon width/height du JSON
+                const refW = (img.naturalWidth || raw.width  || raw.imageWidth  || 1000);
+                const refH = (img.naturalHeight || raw.height || raw.imageHeight || 1500);
+                x = x / refW * 100;
+                y = y / refH * 100;
+                // r aussi en pixels → %
+                if (r > 10) r = r / refW * 100;
+            }
+
+            // Clamp et valeur par défaut du rayon
+            x = Math.max(0, Math.min(100, x));
+            y = Math.max(0, Math.min(100, y));
+            if (isNaN(r) || r <= 0) r = 1.5;
+
+            parsed.push({ x, y, r });
+        });
+
+        if (parsed.length === 0) {
+            alert('Aucune prise valide trouvée dans le fichier.');
+            return;
+        }
+
+        holds = parsed;
+        pathData = []; // réinitialiser le tracé en cours
+        draw();
+    };
+    reader.readAsText(input.files[0]);
+}
+
+function updateTransform() {
+    canvas.style.transform = `translate(${offset.x}px,${offset.y}px) scale(${scale})`;
+}
+
+// ─── DESSIN ────────────────────────────────────────────────────────────────
+// Couleurs par type :
+//   depart → vert  #30d158
+//   main   → bleu  #0a84ff
+//   top    → rouge #ff453a
+//   pied   → jaune #ffd60a
+function getHoldColor(type) {
+    switch(type) {
+        case 'depart': return '#30d158';
+        case 'top':    return '#ff453a';
+        case 'pied':   return '#ffd60a';
+        default:       return '#0a84ff'; // main
+    }
+}
+
+function draw() {
+    if (!img.src) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0);
+
+    holds.forEach((hold) => {
+        const x = hold.x * canvas.width  / 100;
+        const y = hold.y * canvas.height / 100;
+        const r = hold.r * canvas.width  / 100;
+        ctx.beginPath(); ctx.arc(x, y, r+2, 0, Math.PI*2);
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 2; ctx.setLineDash([]); ctx.stroke();
+        ctx.beginPath(); ctx.arc(x, y, r+2, 0, Math.PI*2);
+        ctx.strokeStyle = '#000';
+        ctx.setLineDash([4,4]); ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.setLineDash([]);
+    });
+
+    pathData.forEach((item) => {
+        const hold = holds[item.id];
+        if (!hold) return;
+        const x = hold.x * canvas.width  / 100;
+        const y = hold.y * canvas.height / 100;
+        const r = (hold.r + 2) * canvas.width / 100;
+        ctx.beginPath(); ctx.arc(x, y, r+4, 0, Math.PI*2);
+        ctx.strokeStyle = getHoldColor(item.type);
+        ctx.lineWidth = Math.max(4, canvas.width / 150);
+        ctx.stroke();
+    });
+}
+
+// ─── EXPORT PNG ─────────────────────────────────────────────────────────────
+function downloadImage() {
+    if (!img.src) { alert('Chargez une photo d\'abord.'); return; }
+    const link = document.createElement('a');
+    link.download = 'topo.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+}
+
+// ─── FEEDBACK VISUEL TAP ─────────────────────────────────────────────────────
+function showTapFeedback(x, y) {
+    const flash = document.createElement('div');
+    flash.className = 'tap-flash';
+    flash.style.left = x + 'px';
+    flash.style.top = y + 'px';
+    vp.appendChild(flash);
+    setTimeout(() => flash.remove(), 350);
+}
+
+// ─── INTERACTIONS TACTILES — VERSION CORRIGÉE ──────────────────────────────
+// Problème original : conflit entre pressTimer et tapCount, 
+// getClosestHold utilisait pageX/Y sans tenir compte de l'offset du viewport,
+// et les timeouts se chevauchaient.
+
+function getTouchCanvasPos(touch) {
+    const rect = canvas.getBoundingClientRect();
+    // Utiliser clientX/Y (coordonnées relatives au viewport)
+    const cx = touch.clientX - rect.left;
+    const cy = touch.clientY - rect.top;
+    // Convertir en coordonnées canvas (tenant compte du scale CSS)
+    const canvasX = cx / scale;
+    const canvasY = cy / scale;
+    // Convertir en pourcentages
+    const px = canvasX / canvas.width * 100;
+    const py = canvasY / canvas.height * 100;
+    return { px, py, clientX: touch.clientX, clientY: touch.clientY };
+}
+
+function getClosestHoldFromPos(px, py, thresholdPercent) {
+    let closest = -1, minDist = thresholdPercent;
+    holds.forEach((h, i) => {
+        const d = Math.sqrt((px - h.x)**2 + (py - h.y)**2);
+        if (d < minDist) { minDist = d; closest = i; }
+    });
+    return closest;
+}
+
+vp.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (e.touches.length === 2) {
+        // Pinch zoom — annuler tout
+        clearTimeout(pressTimer); pressTimer = null;
+        clearTimeout(tapTimer); tapTimer = null;
+        tapCount = 0; isLongPress = false;
+        lastDist  = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+        );
+        lastFocus = {
+            x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+            y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+        };
+        return;
+    }
+
+    const t = e.touches[0];
+    touchStartPos = { x: t.clientX, y: t.clientY };
+    lastTouchPos  = { x: t.clientX, y: t.clientY };
+    isLongPress = false;
+
+    tapCount++;
+    clearTimeout(tapTimer);
+
+    if (tapCount === 1) {
+        firstTapPos = { x: t.clientX, y: t.clientY };
+    }
+
+    // Appui long : seulement si 1 seul tap et pas bougé
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => {
+        if (tapCount === 1 && !isLongPress) {
+            isLongPress = true;
+            tapCount = 0;
+            clearTimeout(tapTimer);
+            const pos = getTouchCanvasPos(t);
+            showTapFeedback(t.clientX - vp.getBoundingClientRect().left,
+                           t.clientY - vp.getBoundingClientRect().top);
+            handleLongPress(pos);
+        }
+    }, 600);
+
+    // Détection multi-tap après délai
+    tapTimer = setTimeout(() => {
+        if (isLongPress) { tapCount = 0; return; }
+        const cnt = tapCount;
+        tapCount = 0;
+        clearTimeout(pressTimer);
+        if (cnt >= 2) {
+            const pos = getTouchCanvasPos(firstTapPos ? 
+                {clientX: firstTapPos.x, clientY: firstTapPos.y} : t);
+            showTapFeedback(
+                (firstTapPos ? firstTapPos.x : t.clientX) - vp.getBoundingClientRect().left,
+                (firstTapPos ? firstTapPos.y : t.clientY) - vp.getBoundingClientRect().top
+            );
+            if (cnt === 2) handleInteraction(pos, 'cycle');
+            else           handleInteraction(pos, 'pied');
+        }
+        firstTapPos = null;
+    }, 280);
+
+}, {passive: false});
+
+vp.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    const t = e.touches[0];
+
+    if (e.touches.length === 2) {
+        const dist  = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+        );
+        const focus = {
+            x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+            y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+        };
+        const zf = dist / lastDist;
+        offset.x = focus.x - (focus.x - offset.x) * zf + (focus.x - lastFocus.x);
+        offset.y = focus.y - (focus.y - offset.y) * zf + (focus.y - lastFocus.y);
+        scale *= zf;
+        lastDist = dist; lastFocus = focus;
+        updateTransform();
+        return;
+    }
+
+    const dx = t.clientX - touchStartPos.x;
+    const dy = t.clientY - touchStartPos.y;
+    if (Math.hypot(dx, dy) > 8) {
+        clearTimeout(pressTimer); pressTimer = null;
+        clearTimeout(tapTimer); tapTimer = null;
+        tapCount = 0; isLongPress = false;
+        offset.x += t.clientX - lastTouchPos.x;
+        offset.y += t.clientY - lastTouchPos.y;
+        lastTouchPos = { x: t.clientX, y: t.clientY };
+        updateTransform();
+    }
+}, {passive: false});
+
+vp.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    if (e.touches.length > 0) return; // encore des doigts sur l'écran
+    // Ne rien faire ici — les actions sont gérées dans les timeouts
+}, {passive: false});
+
+// ─── SÉLECTION / DÉSÉLECTION ───────────────────────────────────────────────
+// Cycle couleurs par double-tap répété sur une prise déjà sélectionnée :
+//   (non sélectionnée) → main(bleu) → depart(vert) → top(rouge) → pied(jaune) → [désélectionner]
+// Triple-tap direct → pied(jaune)
+const TYPE_CYCLE = ['main', 'depart', 'top', 'pied'];
+
+function handleInteraction(pos, forcedType) {
+    const idx_hold = getClosestHoldFromPos(pos.px, pos.py, 6);
+    if (idx_hold === -1) return;
+    const idx = pathData.findIndex(p => p.id === idx_hold);
+
+    if (forcedType === 'pied') {
+        // Triple-tap → forcer pied directement
+        if (idx > -1) pathData[idx].type = 'pied';
+        else pathData.push({id: idx_hold, type: 'pied'});
+    } else {
+        // Double-tap → cycle : main → depart → top → pied → [désélectionner]
+        if (idx === -1) {
+            // Prise non sélectionnée → démarrer à 'main'
+            pathData.push({id: idx_hold, type: 'main'});
+        } else {
+            const cur = pathData[idx].type;
+            const ci = TYPE_CYCLE.indexOf(cur);
+            const next = ci >= 0 ? ci + 1 : 0;
+            if (next >= TYPE_CYCLE.length) {
+                // Fin du cycle → désélectionner
+                pathData.splice(idx, 1);
+            } else {
+                pathData[idx].type = TYPE_CYCLE[next];
+            }
+        }
+    }
+    draw();
+}
+
+function handleLongPress(pos) {
+    const idx_hold = getClosestHoldFromPos(pos.px, pos.py, 4);
+    if (idx_hold !== -1) {
+        const isSelected = pathData.some(p => p.id === idx_hold);
+        if (isSelected) {
+            if (confirm('Supprimer définitivement cette prise ?')) {
+                holds.splice(idx_hold, 1);
+                pathData = pathData
+                    .filter(p => p.id !== idx_hold)
+                    .map(p => ({...p, id: p.id > idx_hold ? p.id - 1 : p.id}));
+                draw();
+            }
+        }
+    } else {
+        // Zone vide → ajouter
+        if (confirm('Ajouter une nouvelle prise ici ?')) {
+            holds.push({x: pos.px, y: pos.py, r: 2});
+            draw();
+        }
+    }
+}
+
+// ─── RESET ─────────────────────────────────────────────────────────────────
+function resetAll() {
+    if (!confirm('Vider le parcours actuel ?')) return;
+    pathData = [];
+    currentBlocId = null;
+    showUpdateBtn(false);
+    draw();
+}
+
+// ─── SAUVEGARDE ────────────────────────────────────────────────────────────
+let _saveModalMode = 'new'; // 'new' | 'update'
+
+function openSaveModal() {
+    if (pathData.length === 0) { alert('Sélectionnez au moins une prise avant d\'enregistrer.'); return; }
+    if (!imgDataURL) { alert('Chargez une photo d\'abord.'); return; }
+    _saveModalMode = 'new';
+    document.getElementById('saveModalTitle').textContent = '💾 Enregistrer le bloc';
+    document.getElementById('saveModalConfirmBtn').textContent = 'Confirmer l\'enregistrement';
+    document.getElementById('saveModalConfirmBtn').style.background = 'var(--green)';
+    // Réinitialiser les champs
+    document.getElementById('blocName').value = '';
+    document.getElementById('blocLevel').value = '6A';
+    document.getElementById('blocStatus').value = 'Projet';
+    document.getElementById('blocComment').value = '';
+    document.getElementById('saveModal').classList.add('open');
+}
+
+function openUpdateModal() {
+    if (!currentBlocId) return;
+    if (pathData.length === 0) { alert('Aucune prise sélectionnée.'); return; }
+    const blocs = getBlocs();
+    const bloc = blocs.find(b => b.id === currentBlocId);
+    if (!bloc) { alert('Bloc introuvable dans le carnet.'); return; }
+    _saveModalMode = 'update';
+    document.getElementById('saveModalTitle').textContent = '✏️ Modifier le bloc';
+    document.getElementById('saveModalConfirmBtn').textContent = 'Enregistrer les modifications';
+    document.getElementById('saveModalConfirmBtn').style.background = 'var(--orange)';
+    // Pré-remplir avec les valeurs existantes
+    document.getElementById('blocName').value = bloc.nom;
+    document.getElementById('blocLevel').value = bloc.niveau;
+    document.getElementById('blocStatus').value = bloc.statut;
+    document.getElementById('blocComment').value = bloc.commentaire || '';
+    document.getElementById('saveModal').classList.add('open');
+}
+
+function closeSaveModal() {
+    document.getElementById('saveModal').classList.remove('open');
+}
+
+function saveModalConfirm() {
+    if (_saveModalMode === 'update') updateBlocData();
+    else saveBlocData();
+}
+
+function saveBlocData() {
+    const thumb = generateThumb();
+    const bloc = {
+        id: Date.now(),
+        nom: document.getElementById('blocName').value || 'Bloc sans titre',
+        niveau: document.getElementById('blocLevel').value,
+        statut: document.getElementById('blocStatus').value,
+        commentaire: document.getElementById('blocComment').value,
+        prises: JSON.parse(JSON.stringify(pathData)),
+        holds: JSON.parse(JSON.stringify(holds)),
+        thumb,
+        date: new Date().toLocaleString('fr-FR'),
+    };
+    let saved = getBlocs();
+    saved.unshift(bloc);
+    localStorage.setItem('escaladeBlocs', JSON.stringify(saved));
+    currentBlocId = bloc.id;
+    showUpdateBtn(true);
+    closeSaveModal();
+    renderBlocs();
+    document.getElementById('blocName').value = '';
+    document.getElementById('blocComment').value = '';
+    alert('Bloc enregistré !');
+}
+
+function updateBlocData() {
+    if (!currentBlocId) return;
+    const thumb = generateThumb();
+    let saved = getBlocs();
+    const idx = saved.findIndex(b => b.id === currentBlocId);
+    if (idx === -1) { alert('Bloc introuvable.'); closeSaveModal(); return; }
+    // Conserver l'id et la date originale, mettre à jour le reste
+    saved[idx] = {
+        ...saved[idx],
+        nom: document.getElementById('blocName').value || saved[idx].nom,
+        niveau: document.getElementById('blocLevel').value,
+        statut: document.getElementById('blocStatus').value,
+        commentaire: document.getElementById('blocComment').value,
+        prises: JSON.parse(JSON.stringify(pathData)),
+        holds: JSON.parse(JSON.stringify(holds)),
+        thumb,
+        dateModif: new Date().toLocaleString('fr-FR'),
+    };
+    localStorage.setItem('escaladeBlocs', JSON.stringify(saved));
+    closeSaveModal();
+    renderBlocs();
+}
+
+function showUpdateBtn(visible) {
+    document.getElementById('btnUpdate').style.display = visible ? '' : 'none';
+}
+
+function generateThumb() {
+    const tc = document.createElement('canvas');
+    tc.width = 120; tc.height = 160;
+    const tcx = tc.getContext('2d');
+    tcx.drawImage(img, 0, 0, 120, 160);
+    pathData.forEach((item) => {
+        const h = holds[item.id];
+        if (!h) return;
+        const x = h.x * 120 / 100;
+        const y = h.y * 160 / 100;
+        const r = Math.max(2, h.r * 120 / 100);
+        tcx.beginPath(); tcx.arc(x, y, r+2, 0, Math.PI*2);
+        tcx.strokeStyle = getHoldColor(item.type);
+        tcx.lineWidth = 2;
+        tcx.stroke();
+    });
+    return tc.toDataURL('image/jpeg', 0.6);
+}
+
+// ─── BASE DE DONNÉES LOCALE ────────────────────────────────────────────────
+function getBlocs() {
+    try { return JSON.parse(localStorage.getItem('escaladeBlocs')) || []; }
+    catch { return []; }
+}
+
+// ─── EXPORT CARNET JSON ────────────────────────────────────────────────────
+function exportCarnet() {
+    const blocs = getBlocs();
+    if (blocs.length === 0) { alert('Le carnet est vide, rien à enregistrer.'); return; }
+    const json = JSON.stringify({ carnet_blocs: blocs, exportDate: new Date().toISOString() }, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = 'carnet_blocs.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// ─── IMPORT CARNET JSON ────────────────────────────────────────────────────
+function importCarnet(input) {
+    if (!input.files[0]) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        let raw;
+        try { raw = JSON.parse(e.target.result); }
+        catch(err) { alert('Fichier JSON invalide :\n' + err.message); return; }
+
+        // Accepter : { carnet_blocs: [...] }  ou  [ ... ] direct
+        let blocs = null;
+        if (Array.isArray(raw)) blocs = raw;
+        else if (Array.isArray(raw.carnet_blocs)) blocs = raw.carnet_blocs;
+        else if (Array.isArray(raw.blocs)) blocs = raw.blocs;
+
+        if (!blocs || blocs.length === 0) {
+            alert('Aucun bloc trouvé dans ce fichier.');
+            return;
+        }
+
+        const existing = getBlocs();
+        if (existing.length > 0) {
+            const choice = confirm(`Le carnet contient déjà ${existing.length} bloc(s).\nOK = fusionner | Annuler = remplacer`);
+            if (choice) {
+                // Fusionner : éviter les doublons par id
+                const ids = new Set(existing.map(b => b.id));
+                const newBlocs = blocs.filter(b => !ids.has(b.id));
+                const merged = [...newBlocs, ...existing];
+                localStorage.setItem('escaladeBlocs', JSON.stringify(merged));
+                alert(`${newBlocs.length} nouveau(x) bloc(s) ajouté(s). Total : ${merged.length}.`);
+            } else {
+                localStorage.setItem('escaladeBlocs', JSON.stringify(blocs));
+                alert(`Carnet remplacé. ${blocs.length} bloc(s) chargé(s).`);
+            }
+        } else {
+            localStorage.setItem('escaladeBlocs', JSON.stringify(blocs));
+            alert(`${blocs.length} bloc(s) chargé(s).`);
+        }
+        renderBlocs();
+        // Réinitialiser l'input pour permettre de recharger le même fichier
+        input.value = '';
+    };
+    reader.readAsText(input.files[0]);
+}
+
+// ─── FILTRES MULTIPLES ─────────────────────────────────────────────────────
+function toggleFilter(btn, e) {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    const val = btn.dataset.filter;
+    if (activeFilters.has(val)) {
+        activeFilters.delete(val);
+        btn.classList.remove('active');
+    } else {
+        activeFilters.add(val);
+        btn.classList.add('active');
+    }
+    renderBlocs();
+}
+
+function resetFilters(e) {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    activeFilters.clear();
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    renderBlocs();
+}
+
+function renderBlocs() {
+    const all = getBlocs();
+    let filtered;
+    if (activeFilters.size === 0) {
+        filtered = all;
+    } else {
+        filtered = all.filter(b =>
+            activeFilters.has(b.niveau) || activeFilters.has(b.statut)
+        );
+    }
+
+    document.getElementById('blocCount').textContent = `${all.length} bloc(s)`;
+    const wrapper = document.getElementById('itemsWrapper');
+
+    if (filtered.length === 0) {
+        wrapper.innerHTML = '<div class="empty-msg">Aucun bloc enregistré.</div>';
+        return;
+    }
+
+    wrapper.innerHTML = '';
+    filtered.forEach(bloc => {
+        const levelClass = getLevelClass(bloc.niveau);
+        const statutClass = bloc.statut === 'Réalisé' ? 'statut-realise' : 'statut-projet';
+
+        const div = document.createElement('div');
+        div.className = 'bloc-item';
+        div.innerHTML = `
+            <div class="bloc-thumb">
+                ${bloc.thumb ? `<img src="${bloc.thumb}" alt="thumb">` : '🧗'}
+            </div>
+            <div class="bloc-info">
+                <div class="bloc-name">${bloc.nom}</div>
+                <div class="bloc-meta">${bloc.dateModif ? '✏️ ' + bloc.dateModif : bloc.date}${bloc.commentaire ? ' · ' + bloc.commentaire.slice(0,40) : ''}</div>
+            </div>
+            <span class="bloc-level ${levelClass}">${bloc.niveau}</span>
+            <div class="statut-dot ${statutClass}"></div>
+            <span style="font-size:9px;color:var(--text2);flex-shrink:0">2×tap</span>
+            <button class="btn-del">✕</button>
+        `;
+
+        // Bouton supprimer
+        const delBtn = div.querySelector('.btn-del');
+        delBtn.addEventListener('touchend', (ev) => {
+            ev.preventDefault(); ev.stopPropagation();
+            deleteBloc(bloc.id);
+        });
+        delBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            deleteBloc(bloc.id);
+        });
+
+        // ── Double tap pour charger le bloc ──────────────────────────────
+        let blocTapCount = 0, blocTapTimer = null;
+
+        function triggerBlocLoad() {
+            div.style.borderColor = 'var(--blue)';
+            setTimeout(() => { div.style.borderColor = ''; }, 300);
+            loadBloc(bloc);
+        }
+
+        div.addEventListener('touchend', (ev) => {
+            if (ev.target === delBtn || ev.target.closest('.btn-del')) return;
+            ev.preventDefault();
+            blocTapCount++;
+            clearTimeout(blocTapTimer);
+            blocTapTimer = setTimeout(() => {
+                if (blocTapCount >= 2) triggerBlocLoad();
+                blocTapCount = 0;
+            }, 300);
+        });
+
+        div.addEventListener('dblclick', (ev) => {
+            if (ev.target === delBtn || ev.target.closest('.btn-del')) return;
+            triggerBlocLoad();
+        });
+
+        wrapper.appendChild(div);
+    });
+}
+
+function getLevelClass(n) {
+    if (n === '4') return 'level-jaune';
+    if (n === '5') return 'level-bleu';
+    if (['6A','6A+','6B','6B+','6C','6C+'].includes(n)) return 'level-vert';
+    if (['7A','7A+','7B','7B+','7C','7C+'].includes(n)) return 'level-rouge';
+    if (['8A','8A+','8B','8B+'].includes(n)) return 'level-orange';
+    return 'level-noir';
+}
+
+function deleteBloc(id) {
+    if (!confirm('Supprimer ce bloc du carnet ?')) return;
+    let saved = getBlocs().filter(b => b.id !== id);
+    localStorage.setItem('escaladeBlocs', JSON.stringify(saved));
+    renderBlocs();
+}
+
+// ─── CHARGER UN BLOC SAUVEGARDÉ ────────────────────────────────────────────
+function loadBloc(bloc) {
+    if (bloc.holds) holds = JSON.parse(JSON.stringify(bloc.holds));
+    pathData = JSON.parse(JSON.stringify(bloc.prises));
+    currentBlocId = bloc.id;
+    showUpdateBtn(true);
+    draw();
+}
+
+// ─── SÉPARATEUR REDIMENSIONNABLE ───────────────────────────────────────────
+(function() {
+    const divider = document.getElementById('divider');
+    const panel   = document.getElementById('panel');
+    const PANEL_MIN = 80;   // px
+    const PANEL_MAX = 0.85; // fraction de la hauteur dispo
+
+    // Hauteur initiale : 240px ou sauvegardée
+    const savedH = parseInt(localStorage.getItem('panelHeight')) || 240;
+    panel.style.height = savedH + 'px';
+
+    let dragging = false, startY = 0, startH = 0;
+
+    function onStart(clientY) {
+        dragging = true;
+        startY = clientY;
+        startH = panel.offsetHeight;
+        divider.classList.add('dragging');
+        document.body.style.userSelect = 'none';
+    }
+
+    function onMove(clientY) {
+        if (!dragging) return;
+        const delta = startY - clientY; // tirer vers le haut → panel grandit
+        const bodyH = document.body.offsetHeight;
+        const maxH  = Math.floor(bodyH * PANEL_MAX);
+        let newH = Math.min(maxH, Math.max(PANEL_MIN, startH + delta));
+        panel.style.height = newH + 'px';
+    }
+
+    function onEnd() {
+        if (!dragging) return;
+        dragging = false;
+        divider.classList.remove('dragging');
+        document.body.style.userSelect = '';
+        localStorage.setItem('panelHeight', panel.offsetHeight);
+    }
+
+    // Mouse
+    divider.addEventListener('mousedown', (e) => { e.preventDefault(); onStart(e.clientY); });
+    window.addEventListener('mousemove', (e) => onMove(e.clientY));
+    window.addEventListener('mouseup',   () => onEnd());
+
+    // Touch
+    divider.addEventListener('touchstart', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        onStart(e.touches[0].clientY);
+    }, { passive: false });
+    divider.addEventListener('touchmove', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        onMove(e.touches[0].clientY);
+    }, { passive: false });
+    divider.addEventListener('touchend', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        onEnd();
+    }, { passive: false });
+})();
+
+// ─── INIT ───────────────────────────────────────────────────────────────────
+window.onload = renderBlocs;
+</script>
+</body>
+</html>
