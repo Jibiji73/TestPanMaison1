@@ -384,6 +384,70 @@
         .load-preview-thumb { width: 36px; height: 36px; border-radius: 4px; object-fit: cover; }
         .load-preview-info { font-size: 12px; }
 
+        /* Indicateur sync GitHub */
+        .gh-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 10px;
+            padding: 2px 7px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--surface2);
+            color: var(--text2);
+            cursor: pointer;
+            touch-action: manipulation;
+            white-space: nowrap;
+        }
+        .gh-status.configured {
+            border-color: var(--green);
+            color: var(--green);
+            background: rgba(48,209,88,0.1);
+        }
+        .gh-status.syncing {
+            border-color: var(--blue);
+            color: var(--blue);
+            background: rgba(10,132,255,0.1);
+            animation: pulse 1s infinite;
+        }
+        .gh-status.error {
+            border-color: var(--red);
+            color: var(--red);
+            background: rgba(255,69,58,0.1);
+        }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+        /* Modal GitHub config */
+        .gh-modal-row {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-bottom: 10px;
+        }
+        .gh-modal-row label {
+            font-size: 11px;
+            color: var(--text2);
+            font-weight: 600;
+        }
+        .gh-modal-row input {
+            width: 100%;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            outline: none;
+            font-family: monospace;
+        }
+        .gh-hint {
+            font-size: 10px;
+            color: var(--text2);
+            margin-top: -6px;
+            margin-bottom: 6px;
+            line-height: 1.4;
+        }
+
         /* Feedback visuel tap */
         .tap-flash {
             position: absolute;
@@ -480,7 +544,8 @@ if ('serviceWorker' in navigator) {
         <span class="panel-title">📖 Mon Carnet</span>
         <div class="carnet-btns">
             <button class="btn-carnet btn-carnet-load" ontouchend="fetchFromGithub('carnet'); return false;" onclick="fetchFromGithub('carnet')" title="Charger carnet_blocs.json depuis GitHub">📂 Charger</button>
-            <button class="btn-carnet btn-carnet-save" ontouchend="exportCarnet(); return false;" onclick="exportCarnet()" title="Télécharger carnet_blocs.json">💾 Carnet</button>
+            <button class="btn-carnet btn-carnet-save" ontouchend="saveCarnet(); return false;" onclick="saveCarnet()" title="Sauvegarder carnet vers GitHub ou télécharger">💾 Sauver</button>
+            <span id="ghStatus" class="gh-status" ontouchend="openGhModal(); return false;" onclick="openGhModal()" title="Configurer GitHub">⚙️ GitHub</span>
             <span id="blocCount" style="font-size:11px; color:var(--text2); margin-left:4px">0 bloc(s)</span>
         </div>
     </div>
@@ -552,6 +617,41 @@ if ('serviceWorker' in navigator) {
         <div class="load-preview" id="loadPreview"></div>
         <button class="btn-confirm" ontouchend="confirmLoad(); return false;" onclick="confirmLoad()">Charger ce bloc</button>
         <button class="btn-cancel" ontouchend="document.getElementById('loadModal').classList.remove('open'); return false;" onclick="document.getElementById('loadModal').classList.remove('open')">Annuler</button>
+    </div>
+</div>
+
+<!-- Modal configuration GitHub -->
+<div class="modal-overlay" id="ghModal">
+    <div class="modal" style="max-height:90vh;overflow-y:auto">
+        <h3>⚙️ Connexion GitHub</h3>
+        <p class="gh-hint">Pour sauvegarder automatiquement le carnet sur GitHub, renseignez votre token et les infos du repository. Ces données sont stockées <strong>uniquement dans votre navigateur</strong>.</p>
+
+        <div class="gh-modal-row">
+            <label>Token GitHub (Personal Access Token)</label>
+            <input type="password" id="ghToken" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+        </div>
+        <p class="gh-hint">Créer sur github.com → Settings → Developer settings → Personal access tokens → Tokens (classic) → cocher scope : <strong>repo</strong></p>
+
+        <div class="gh-modal-row">
+            <label>Propriétaire du repository (username)</label>
+            <input type="text" id="ghOwner" placeholder="mon-username">
+        </div>
+        <div class="gh-modal-row">
+            <label>Nom du repository</label>
+            <input type="text" id="ghRepo" placeholder="mon-repo-escalade">
+        </div>
+        <div class="gh-modal-row">
+            <label>Branche</label>
+            <input type="text" id="ghBranch" placeholder="main">
+        </div>
+        <div class="gh-modal-row">
+            <label>Chemin du fichier dans le repo</label>
+            <input type="text" id="ghPath" placeholder="carnet_blocs.json">
+        </div>
+
+        <button class="btn-confirm" ontouchend="saveGhConfig(); return false;" onclick="saveGhConfig()">✅ Enregistrer la configuration</button>
+        <button class="btn-cancel" style="background:var(--red);color:#fff;border-color:var(--red);margin-top:6px" ontouchend="clearGhConfig(); return false;" onclick="clearGhConfig()">🗑️ Supprimer le token</button>
+        <button class="btn-cancel" ontouchend="closeGhModal(); return false;" onclick="closeGhModal()">Fermer</button>
     </div>
 </div>
 
@@ -1090,21 +1190,154 @@ function getBlocs() {
     catch { return []; }
 }
 
-// ─── EXPORT CARNET JSON ────────────────────────────────────────────────────
-function exportCarnet() {
+// ─── CONFIGURATION GITHUB ──────────────────────────────────────────────────
+const GH_KEY = 'ghConfig'; // clé localStorage
+
+function getGhConfig() {
+    try { return JSON.parse(localStorage.getItem(GH_KEY)) || {}; }
+    catch { return {}; }
+}
+
+function openGhModal() {
+    const cfg = getGhConfig();
+    document.getElementById('ghToken').value  = cfg.token  || '';
+    document.getElementById('ghOwner').value  = cfg.owner  || '';
+    document.getElementById('ghRepo').value   = cfg.repo   || '';
+    document.getElementById('ghBranch').value = cfg.branch || 'main';
+    document.getElementById('ghPath').value   = cfg.path   || 'carnet_blocs.json';
+    document.getElementById('ghModal').classList.add('open');
+}
+
+function closeGhModal() {
+    document.getElementById('ghModal').classList.remove('open');
+}
+
+function saveGhConfig() {
+    const cfg = {
+        token:  document.getElementById('ghToken').value.trim(),
+        owner:  document.getElementById('ghOwner').value.trim(),
+        repo:   document.getElementById('ghRepo').value.trim(),
+        branch: document.getElementById('ghBranch').value.trim() || 'main',
+        path:   document.getElementById('ghPath').value.trim()   || 'carnet_blocs.json',
+    };
+    if (!cfg.token || !cfg.owner || !cfg.repo) {
+        alert('Token, propriétaire et nom du repository sont obligatoires.');
+        return;
+    }
+    localStorage.setItem(GH_KEY, JSON.stringify(cfg));
+    updateGhStatusIndicator();
+    closeGhModal();
+    alert('Configuration GitHub enregistrée !\nLe bouton 💾 Sauver enverra maintenant le carnet directement sur GitHub.');
+}
+
+function clearGhConfig() {
+    if (!confirm('Supprimer le token et la configuration GitHub ?')) return;
+    localStorage.removeItem(GH_KEY);
+    updateGhStatusIndicator();
+    closeGhModal();
+}
+
+function updateGhStatusIndicator() {
+    const el  = document.getElementById('ghStatus');
+    const cfg = getGhConfig();
+    if (cfg.token && cfg.owner && cfg.repo) {
+        el.className = 'gh-status configured';
+        el.textContent = `✅ ${cfg.owner}/${cfg.repo}`;
+    } else {
+        el.className = 'gh-status';
+        el.textContent = '⚙️ GitHub';
+    }
+}
+
+// ─── SAUVEGARDE CARNET : GitHub API ou téléchargement ─────────────────────
+async function saveCarnet() {
     const blocs = getBlocs();
-    if (blocs.length === 0) { alert('Le carnet est vide, rien à enregistrer.'); return; }
+    if (blocs.length === 0) { alert('Le carnet est vide.'); return; }
+
+    const cfg = getGhConfig();
     const json = JSON.stringify({ carnet_blocs: blocs, exportDate: new Date().toISOString() }, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
+
+    if (cfg.token && cfg.owner && cfg.repo) {
+        // ── Mode API GitHub ────────────────────────────────────────────────
+        await pushToGithub(json, cfg);
+    } else {
+        // ── Mode fallback : téléchargement local ───────────────────────────
+        downloadJson(json);
+        alert('Fichier carnet_blocs.json téléchargé.\n\nPour la sauvegarde automatique sur GitHub,\nconfigurez votre token via ⚙️ GitHub.');
+    }
+}
+
+async function pushToGithub(jsonContent, cfg) {
+    const el = document.getElementById('ghStatus');
+    el.className = 'gh-status syncing';
+    el.textContent = '⏳ Envoi…';
+
+    const apiUrl = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${cfg.path}`;
+    const headers = {
+        'Authorization': `token ${cfg.token}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'Content-Type': 'application/json',
+    };
+
+    try {
+        // 1. Récupérer le SHA du fichier existant (nécessaire pour la mise à jour)
+        let sha = null;
+        const getResp = await fetch(apiUrl + '?ref=' + cfg.branch, { headers });
+        if (getResp.ok) {
+            const existing = await getResp.json();
+            sha = existing.sha;
+        } else if (getResp.status !== 404) {
+            throw new Error(`Lecture impossible : HTTP ${getResp.status}`);
+        }
+
+        // 2. Encoder le contenu en base64
+        const b64 = btoa(unescape(encodeURIComponent(jsonContent)));
+
+        // 3. PUT pour créer ou mettre à jour le fichier
+        const body = {
+            message: `Mise à jour carnet_blocs.json — ${new Date().toLocaleString('fr-FR')}`,
+            content: b64,
+            branch:  cfg.branch,
+        };
+        if (sha) body.sha = sha; // obligatoire pour mise à jour
+
+        const putResp = await fetch(apiUrl, {
+            method:  'PUT',
+            headers,
+            body: JSON.stringify(body),
+        });
+
+        if (!putResp.ok) {
+            const err = await putResp.json();
+            throw new Error(err.message || `HTTP ${putResp.status}`);
+        }
+
+        el.className = 'gh-status configured';
+        el.textContent = `✅ ${cfg.owner}/${cfg.repo}`;
+        alert(`✅ Carnet sauvegardé sur GitHub !\n${cfg.owner}/${cfg.repo} — ${cfg.path}`);
+
+    } catch(e) {
+        el.className = 'gh-status error';
+        el.textContent = '❌ Erreur';
+        // Fallback téléchargement
+        downloadJson(jsonContent);
+        alert(`❌ Erreur GitHub : ${e.message}\n\nFallback : fichier carnet_blocs.json téléchargé localement.`);
+        setTimeout(updateGhStatusIndicator, 3000);
+    }
+}
+
+function downloadJson(jsonContent) {
+    const blob = new Blob([jsonContent], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
-    a.href     = url;
-    a.download = 'carnet_blocs.json';
-    document.body.appendChild(a);
-    a.click();
+    a.href = url; a.download = 'carnet_blocs.json';
+    document.body.appendChild(a); a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 }
+
+// Gardé pour compatibilité (bouton exportCarnet éventuel)
+function exportCarnet() { saveCarnet(); }
 
 // ─── FILTRES MULTIPLES ─────────────────────────────────────────────────────
 function toggleFilter(btn, e) {
@@ -1291,7 +1524,10 @@ function loadBloc(bloc) {
 })();
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-window.onload = renderBlocs;
+window.onload = () => {
+    renderBlocs();
+    updateGhStatusIndicator();
+};
 
 </script>
 </body>
