@@ -649,11 +649,11 @@ function loadJsonHolds(input) {
             return;
         }
 
-        // Dimensions de référence : image chargée > metadata JSON > dimensions connues de pan.png
+        // Dimensions de référence : image chargée > metadata JSON > dimensions réelles de pan.png
         const refW = (img.naturalWidth  > 0 ? img.naturalWidth  : null)
-                  || raw.imageWidth || raw.width  || 2211;
+                  || raw.imageWidth || raw.width  || 2000;
         const refH = (img.naturalHeight > 0 ? img.naturalHeight : null)
-                  || raw.imageHeight || raw.height || 1846;
+                  || raw.imageHeight || raw.height || 1669;
 
         const DEFAULT_R_PCT = 1.2;
 
@@ -1364,20 +1364,23 @@ async function autoLoadAssets() {
     ph.style.display = 'flex';
     ph.innerHTML = `<div class="icon">⏳</div><p style="font-size:13px">Chargement…</p>`;
 
-    // ── 1. Image du mur — Image.src direct (pas de fetch/blob/FileReader) ─
-    // C'est la seule méthode fiable pour les images cross-origin sur iOS/Android.
+    // ── 1. Image du mur ───────────────────────────────────────────────────
+    // NB: pas de crossOrigin pour éviter les blocages CORS sur GitHub Pages.
+    // Les dimensions sont capturées dans imgW/imgH dès onload pour être
+    // disponibles de façon fiable dans l'étape 2 (holds).
+    let imgW = 0, imgH = 0;
+
     await new Promise((resolve) => {
         const newImg = new Image();
-        newImg.crossOrigin = 'anonymous';
         newImg.onload = () => {
-            img = newImg;
-            // Pour compatibilité avec generateThumb() qui utilise ctx.drawImage(img,…)
-            // img est déjà un HTMLImageElement, draw() peut l'utiliser directement.
-            imgDataURL = newImg.src; // référence URL (utilisée par openSaveModal guard)
-            scale  = vp.clientWidth / img.naturalWidth;
-            offset = { x: 0, y: 0 };
-            canvas.width  = img.naturalWidth;
-            canvas.height = img.naturalHeight;
+            img      = newImg;
+            imgW     = newImg.naturalWidth;
+            imgH     = newImg.naturalHeight;
+            imgDataURL = newImg.src;           // garde la référence URL
+            scale    = vp.clientWidth / imgW;
+            offset   = { x: 0, y: 0 };
+            canvas.width  = imgW;
+            canvas.height = imgH;
             ph.style.display = 'none';
             updateTransform();
             draw();
@@ -1391,12 +1394,13 @@ async function autoLoadAssets() {
                 <p style="font-size:11px;margin-top:8px">2× tap : prise main &nbsp;|&nbsp; 3× tap : prise de pied</p>
                 <p style="font-size:11px">Appui long sur prise sélectionnée : supprimer</p>
                 <p style="font-size:11px">Appui long sur zone vide : ajouter une prise</p>`;
-            resolve(); // continuer quand même
+            resolve();
         };
         newImg.src = base + 'pan.png?t=' + t;
     });
 
     // ── 2. Prises : holds.json ────────────────────────────────────────────
+    // imgW/imgH sont garantis non-nuls si l'image a chargé (sinon fallback).
     try {
         const resp = await fetch(base + 'holds.json?t=' + t, { cache: 'no-store' });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -1414,14 +1418,9 @@ async function autoLoadAssets() {
         }
         if (!arr || arr.length === 0) throw new Error('tableau vide');
 
-        // Dimensions de référence pour la conversion pixels → %
-        // Priorité : image chargée > metadata JSON > fallback
-        const refW = (img.naturalWidth  > 0 ? img.naturalWidth  : null)
-                  || raw.imageWidth || raw.width  || 2211;
-        const refH = (img.naturalHeight > 0 ? img.naturalHeight : null)
-                  || raw.imageHeight || raw.height || 1846;
-
-        // Rayon par défaut : ~1.2% de la largeur (visuellement ~27px sur 2211px)
+        // Dimensions de référence : imgW/imgH capturés juste après onload (fiables)
+        const refW = imgW || raw.imageWidth || raw.width  || 2000;
+        const refH = imgH || raw.imageHeight || raw.height || 1669;
         const DEFAULT_R_PCT = 1.2;
 
         const parsed = [];
@@ -1435,18 +1434,11 @@ async function autoLoadAssets() {
             const hasR = (item.r != null || item.radius != null || item.size != null);
             let r = hasR ? parseFloat(item.r ?? item.radius ?? item.size) : null;
 
-            // Coordonnées en pixels (valeurs > 100) → convertir en %
             if (x > 100 || y > 100) {
                 x = x / refW * 100;
                 y = y / refH * 100;
-                // Rayon en pixels aussi → convertir ; sinon rayon par défaut en %
-                if (r !== null && r > 0) {
-                    r = r / refW * 100;
-                } else {
-                    r = DEFAULT_R_PCT;
-                }
+                r = (r !== null && r > 0) ? r / refW * 100 : DEFAULT_R_PCT;
             } else {
-                // Déjà en % — rayon par défaut si absent
                 if (r === null || isNaN(r) || r <= 0) r = DEFAULT_R_PCT;
             }
 
@@ -1462,8 +1454,6 @@ async function autoLoadAssets() {
     }
 
     // ── 3. Carnet : carnet_blocs.json ─────────────────────────────────────
-    // GitHub = source de vérité : on écrase le localStorage à chaque ouverture.
-    // Si le fichier est absent (404), le localStorage existant est conservé.
     try {
         const resp = await fetch(base + 'carnet_blocs.json?t=' + t, { cache: 'no-store' });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -1476,7 +1466,6 @@ async function autoLoadAssets() {
             localStorage.setItem('escaladeBlocs', JSON.stringify(blocs));
         }
     } catch(e) {
-        // 404 = pas encore de carnet sur GitHub → localStorage conservé silencieusement
         console.info('carnet_blocs.json :', e.message, '→ localStorage conservé.');
     }
 
