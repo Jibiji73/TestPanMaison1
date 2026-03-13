@@ -442,12 +442,8 @@ if ('serviceWorker' in navigator) {
 </script>
 
 <div class="toolbar">
-    <!-- Chargement image du mur -->
-    <label for="uploadImg" ontouchend="this.click(); return false;">📷 Photo mur</label>
-    <input type="file" id="uploadImg" accept="image/*" style="display:none" onchange="initImage(this)">
-    <!-- Chargement JSON des prises -->
-    <label for="uploadJson" ontouchend="this.click(); return false;">📌 JSON prises</label>
-    <input type="file" id="uploadJson" accept=".json,application/json" style="display:none" onchange="loadJsonHolds(this)">
+    <button ontouchend="fetchFromGithub('image'); return false;" onclick="fetchFromGithub('image')">📷 Photo mur</button>
+    <button ontouchend="fetchFromGithub('holds'); return false;" onclick="fetchFromGithub('holds')">📌 Prises</button>
     <button class="btn-save" ontouchend="openSaveModal(); return false;" onclick="openSaveModal()">💾 Sauver</button>
     <button class="btn-update" id="btnUpdate" ontouchend="openUpdateModal(); return false;" onclick="openUpdateModal()" style="display:none">✏️ Modifier</button>
     <button class="btn-export" ontouchend="downloadImage(); return false;" onclick="downloadImage()">🖼️ Export</button>
@@ -483,9 +479,8 @@ if ('serviceWorker' in navigator) {
     <div class="panel-header">
         <span class="panel-title">📖 Mon Carnet</span>
         <div class="carnet-btns">
-            <label class="btn-carnet btn-carnet-load" for="uploadCarnet" ontouchend="this.click(); return false;" title="Charger carnet_blocs.json">📂 Charger</label>
-            <input type="file" id="uploadCarnet" accept=".json,application/json" style="display:none" onchange="importCarnet(this)">
-            <button class="btn-carnet btn-carnet-save" ontouchend="exportCarnet(); return false;" onclick="exportCarnet()" title="Enregistrer carnet_blocs.json">💾 Carnet</button>
+            <button class="btn-carnet btn-carnet-load" ontouchend="fetchFromGithub('carnet'); return false;" onclick="fetchFromGithub('carnet')" title="Charger carnet_blocs.json depuis GitHub">📂 Charger</button>
+            <button class="btn-carnet btn-carnet-save" ontouchend="exportCarnet(); return false;" onclick="exportCarnet()" title="Télécharger carnet_blocs.json">💾 Carnet</button>
             <span id="blocCount" style="font-size:11px; color:var(--text2); margin-left:4px">0 bloc(s)</span>
         </div>
     </div>
@@ -585,118 +580,121 @@ let isLongPress = false;
 let touchStartPos = {x:0, y:0};
 let currentBlocId = null; // id du bloc actuellement chargé (null = nouveau)
 
-// ─── IMAGE ─────────────────────────────────────────────────────────────────
-function initImage(input) {
-    if (!input.files[0]) return;
-    const fileName = input.files[0].name;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        imgDataURL = e.target.result;
-        img = new Image();
-        img.onload = () => {
-            scale = vp.clientWidth / img.width;
-            offset = {x:0, y:0};
-            canvas.width  = img.width;
-            canvas.height = img.height;
-            document.getElementById('placeholder').style.display = 'none';
-            updateTransform();
-            draw();
-        };
-        img.src = imgDataURL;
-    };
-    reader.readAsDataURL(input.files[0]);
+// ─── URL DE BASE GITHUB ────────────────────────────────────────────────────
+// Déterminée une seule fois : dossier du HTML sur le serveur
+function getBase() {
+    return window.location.href.replace(/\?.*$/, '').replace(/\/[^/]*$/, '/');
 }
 
-// ─── CHARGEMENT JSON DES PRISES ─────────────────────────────────────────────
-// Formats acceptés :
-//   1. Array direct : [{x, y, r}, ...]
-//   2. Objet avec clé "holds"  : {"holds": [{x, y, r}, ...]}
-//   3. Objet avec clé "prises" : {"prises": [{x, y, r}, ...]}
-//   4. Coordonnées pixel (si pas de r ou si valeurs > 100) → converties en %
-function loadJsonHolds(input) {
-    if (!input.files[0]) return;
-    const fileName = input.files[0].name;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        let raw;
-        try {
-            raw = JSON.parse(e.target.result);
-        } catch(err) {
-            alert('Fichier JSON invalide :\n' + err.message);
-            return;
-        }
+// ─── CHARGEMENT DEPUIS GITHUB ──────────────────────────────────────────────
+// type = 'image' | 'holds' | 'carnet'
+async function fetchFromGithub(type) {
+    const base = getBase();
+    const t    = Date.now(); // anti-cache
 
-        // Extraire le tableau de prises selon le format
-        let arr = null;
-        if (Array.isArray(raw)) {
-            arr = raw;
-        } else if (raw && Array.isArray(raw.holds)) {
-            arr = raw.holds;
-        } else if (raw && Array.isArray(raw.prises)) {
-            arr = raw.prises;
-        } else if (raw && Array.isArray(raw.points)) {
-            arr = raw.points;
-        } else if (raw && Array.isArray(raw.holds_positions)) {
-            arr = raw.holds_positions;
-        } else {
-            // Chercher la première propriété qui est un tableau
-            const firstArr = Object.values(raw).find(v => Array.isArray(v));
-            if (firstArr) arr = firstArr;
-        }
-
-        if (!arr || arr.length === 0) {
-            alert('Impossible de trouver les positions des prises dans ce fichier JSON.\nFormats supportés :\n• [{x, y, r}, ...]\n• {"holds": [{x, y, r}, ...]}\n• {"prises": [...]}');
-            return;
-        }
-
-        // Dimensions de référence : image chargée > metadata JSON > dimensions réelles de pan.png
-        const refW = (img.naturalWidth  > 0 ? img.naturalWidth  : null)
-                  || raw.imageWidth || raw.width  || 2000;
-        const refH = (img.naturalHeight > 0 ? img.naturalHeight : null)
-                  || raw.imageHeight || raw.height || 1669;
-
-        const DEFAULT_R_PCT = 1.2;
-
-        // Normaliser chaque prise
-        const parsed = [];
-        arr.forEach((item, i) => {
-            // Accepter x/y ou cx/cy ou left/top ou px/py
-            const rawX = item.x ?? item.cx ?? item.left ?? item.px ?? null;
-            const rawY = item.y ?? item.cy ?? item.top  ?? item.py ?? null;
-            if (rawX === null || rawY === null) return;
-
-            let x = parseFloat(rawX);
-            let y = parseFloat(rawY);
-            const hasR = (item.r != null || item.radius != null || item.size != null);
-            let r = hasR ? parseFloat(item.r ?? item.radius ?? item.size) : null;
-
-            if (x > 100 || y > 100) {
-                x = x / refW * 100;
-                y = y / refH * 100;
-                if (r !== null && r > 0) {
-                    r = r / refW * 100;
-                } else {
-                    r = DEFAULT_R_PCT;
-                }
-            } else {
-                if (r === null || isNaN(r) || r <= 0) r = DEFAULT_R_PCT;
-            }
-
-            x = Math.max(0, Math.min(100, x));
-            y = Math.max(0, Math.min(100, y));
-            parsed.push({ x, y, r });
+    if (type === 'image') {
+        // ── Photo du mur : pan.png ─────────────────────────────────────────
+        const url = base + 'pan.png?t=' + t;
+        await new Promise((resolve) => {
+            const newImg = new Image();
+            newImg.onload = () => {
+                img        = newImg;
+                imgDataURL = newImg.src;
+                scale      = vp.clientWidth / newImg.naturalWidth;
+                offset     = { x: 0, y: 0 };
+                canvas.width  = newImg.naturalWidth;
+                canvas.height = newImg.naturalHeight;
+                document.getElementById('placeholder').style.display = 'none';
+                updateTransform();
+                draw();
+                resolve();
+            };
+            newImg.onerror = () => {
+                alert('Impossible de charger pan.png depuis GitHub.\nVérifiez que le fichier est bien dans le même dossier que le HTML.');
+                resolve();
+            };
+            newImg.src = url;
         });
 
-        if (parsed.length === 0) {
-            alert('Aucune prise valide trouvée dans le fichier.');
-            return;
+    } else if (type === 'holds') {
+        // ── Prises : holds.json ────────────────────────────────────────────
+        try {
+            const resp = await fetch(base + 'holds.json?t=' + t, { cache: 'no-store' });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const raw  = await resp.json();
+            applyHoldsData(raw);
+        } catch(e) {
+            alert('Impossible de charger holds.json depuis GitHub.\n' + e.message);
         }
 
-        holds = parsed;
-        pathData = []; // réinitialiser le tracé en cours
-        draw();
-    };
-    reader.readAsText(input.files[0]);
+    } else if (type === 'carnet') {
+        // ── Carnet : carnet_blocs.json ─────────────────────────────────────
+        try {
+            const resp = await fetch(base + 'carnet_blocs.json?t=' + t, { cache: 'no-store' });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const raw  = await resp.json();
+            let blocs  = null;
+            if      (Array.isArray(raw))                  blocs = raw;
+            else if (Array.isArray(raw.carnet_blocs))     blocs = raw.carnet_blocs;
+            else if (Array.isArray(raw.blocs))            blocs = raw.blocs;
+            if (!blocs || blocs.length === 0) throw new Error('Aucun bloc trouvé dans le fichier.');
+            const existing = getBlocs();
+            if (existing.length > 0) {
+                const merge = confirm(`Le carnet local contient ${existing.length} bloc(s).\nOK = fusionner | Annuler = remplacer`);
+                if (merge) {
+                    const ids = new Set(existing.map(b => b.id));
+                    blocs = [...blocs.filter(b => !ids.has(b.id)), ...existing];
+                }
+            }
+            localStorage.setItem('escaladeBlocs', JSON.stringify(blocs));
+            renderBlocs();
+        } catch(e) {
+            alert('Impossible de charger carnet_blocs.json depuis GitHub.\n' + e.message);
+        }
+    }
+}
+
+// ─── PARSING DES PRISES (partagé entre fetch GitHub et chargement manuel) ──
+function applyHoldsData(raw) {
+    let arr = null;
+    if      (Array.isArray(raw))                 arr = raw;
+    else if (Array.isArray(raw.holds))           arr = raw.holds;
+    else if (Array.isArray(raw.prises))          arr = raw.prises;
+    else if (Array.isArray(raw.points))          arr = raw.points;
+    else if (Array.isArray(raw.holds_positions)) arr = raw.holds_positions;
+    else {
+        const f = Object.values(raw).find(v => Array.isArray(v));
+        if (f) arr = f;
+    }
+    if (!arr || arr.length === 0) { alert('Aucune prise trouvée dans le fichier.'); return; }
+
+    // Dimensions de référence : image chargée > metadata JSON > dimensions de pan.png
+    const refW = (img.naturalWidth  > 0 ? img.naturalWidth  : 0)
+              || raw.imageWidth || raw.width  || 2000;
+    const refH = (img.naturalHeight > 0 ? img.naturalHeight : 0)
+              || raw.imageHeight || raw.height || 1669;
+    const DEFAULT_R_PCT = 1.2;
+
+    const parsed = [];
+    arr.forEach(item => {
+        const rawX = item.x ?? item.cx ?? item.left ?? item.px ?? null;
+        const rawY = item.y ?? item.cy ?? item.top  ?? item.py ?? null;
+        if (rawX === null || rawY === null) return;
+        let x = parseFloat(rawX), y = parseFloat(rawY);
+        const hasR = (item.r != null || item.radius != null || item.size != null);
+        let r = hasR ? parseFloat(item.r ?? item.radius ?? item.size) : null;
+        if (x > 100 || y > 100) {
+            x = x / refW * 100;  y = y / refH * 100;
+            r = (r !== null && r > 0) ? r / refW * 100 : DEFAULT_R_PCT;
+        } else {
+            if (r === null || isNaN(r) || r <= 0) r = DEFAULT_R_PCT;
+        }
+        parsed.push({ x: Math.max(0,Math.min(100,x)), y: Math.max(0,Math.min(100,y)), r });
+    });
+    if (parsed.length === 0) { alert('Aucune prise valide dans le fichier.'); return; }
+    holds    = parsed;
+    pathData = [];
+    draw();
 }
 
 function updateTransform() {
@@ -1108,51 +1106,6 @@ function exportCarnet() {
     URL.revokeObjectURL(url);
 }
 
-// ─── IMPORT CARNET JSON ────────────────────────────────────────────────────
-function importCarnet(input) {
-    if (!input.files[0]) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        let raw;
-        try { raw = JSON.parse(e.target.result); }
-        catch(err) { alert('Fichier JSON invalide :\n' + err.message); return; }
-
-        // Accepter : { carnet_blocs: [...] }  ou  [ ... ] direct
-        let blocs = null;
-        if (Array.isArray(raw)) blocs = raw;
-        else if (Array.isArray(raw.carnet_blocs)) blocs = raw.carnet_blocs;
-        else if (Array.isArray(raw.blocs)) blocs = raw.blocs;
-
-        if (!blocs || blocs.length === 0) {
-            alert('Aucun bloc trouvé dans ce fichier.');
-            return;
-        }
-
-        const existing = getBlocs();
-        if (existing.length > 0) {
-            const choice = confirm(`Le carnet contient déjà ${existing.length} bloc(s).\nOK = fusionner | Annuler = remplacer`);
-            if (choice) {
-                // Fusionner : éviter les doublons par id
-                const ids = new Set(existing.map(b => b.id));
-                const newBlocs = blocs.filter(b => !ids.has(b.id));
-                const merged = [...newBlocs, ...existing];
-                localStorage.setItem('escaladeBlocs', JSON.stringify(merged));
-                alert(`${newBlocs.length} nouveau(x) bloc(s) ajouté(s). Total : ${merged.length}.`);
-            } else {
-                localStorage.setItem('escaladeBlocs', JSON.stringify(blocs));
-                alert(`Carnet remplacé. ${blocs.length} bloc(s) chargé(s).`);
-            }
-        } else {
-            localStorage.setItem('escaladeBlocs', JSON.stringify(blocs));
-            alert(`${blocs.length} bloc(s) chargé(s).`);
-        }
-        renderBlocs();
-        // Réinitialiser l'input pour permettre de recharger le même fichier
-        input.value = '';
-    };
-    reader.readAsText(input.files[0]);
-}
-
 // ─── FILTRES MULTIPLES ─────────────────────────────────────────────────────
 function toggleFilter(btn, e) {
     if (e) { e.preventDefault(); e.stopPropagation(); }
@@ -1337,143 +1290,9 @@ function loadBloc(bloc) {
     }, { passive: false });
 })();
 
-
-// ─── CHARGEMENT AUTOMATIQUE DEPUIS GITHUB PAGES ────────────────────────────
-// Fonctionne quand le HTML est servi via https:// (GitHub Pages).
-// Les fichiers pan.png, holds.json et carnet_blocs.json doivent être dans le
-// MÊME dossier que ce fichier HTML dans le repository.
-//
-// Anti-cache : ?t=<timestamp> force GitHub Pages à renvoyer la dernière
-// version commitée à chaque ouverture (contourne le cache navigateur).
-
-async function autoLoadAssets() {
-    // Si ouvert en local (file://), fetch() est bloqué → fallback saisie manuelle
-    if (!window.location.protocol.startsWith('http')) {
-        console.warn('Protocole non-HTTP : chargement auto ignoré (utiliser GitHub Pages).');
-        renderBlocs();
-        return;
-    }
-
-    // Base URL = dossier du HTML (retire query string + nom de fichier)
-    const base = window.location.href.replace(/\?.*$/, '').replace(/\/[^/]*$/, '/');
-    // Timestamp anti-cache — différent à chaque ouverture
-    const t = Date.now();
-
-    // ── Indicateur de chargement ──────────────────────────────────────────
-    const ph = document.getElementById('placeholder');
-    ph.style.display = 'flex';
-    ph.innerHTML = `<div class="icon">⏳</div><p style="font-size:13px">Chargement…</p>`;
-
-    // ── 1. Image du mur ───────────────────────────────────────────────────
-    // NB: pas de crossOrigin pour éviter les blocages CORS sur GitHub Pages.
-    // Les dimensions sont capturées dans imgW/imgH dès onload pour être
-    // disponibles de façon fiable dans l'étape 2 (holds).
-    let imgW = 0, imgH = 0;
-
-    await new Promise((resolve) => {
-        const newImg = new Image();
-        newImg.onload = () => {
-            img      = newImg;
-            imgW     = newImg.naturalWidth;
-            imgH     = newImg.naturalHeight;
-            imgDataURL = newImg.src;           // garde la référence URL
-            scale    = vp.clientWidth / imgW;
-            offset   = { x: 0, y: 0 };
-            canvas.width  = imgW;
-            canvas.height = imgH;
-            ph.style.display = 'none';
-            updateTransform();
-            draw();
-            resolve();
-        };
-        newImg.onerror = () => {
-            console.warn('pan.png introuvable sur le serveur.');
-            ph.innerHTML = `<div class="icon">🧗</div>
-                <p>1. <strong>📷 Photo mur</strong> — charger la photo du mur</p>
-                <p>2. <strong>📌 JSON prises</strong> — charger le fichier de positions</p>
-                <p style="font-size:11px;margin-top:8px">2× tap : prise main &nbsp;|&nbsp; 3× tap : prise de pied</p>
-                <p style="font-size:11px">Appui long sur prise sélectionnée : supprimer</p>
-                <p style="font-size:11px">Appui long sur zone vide : ajouter une prise</p>`;
-            resolve();
-        };
-        newImg.src = base + 'pan.png?t=' + t;
-    });
-
-    // ── 2. Prises : holds.json ────────────────────────────────────────────
-    // imgW/imgH sont garantis non-nuls si l'image a chargé (sinon fallback).
-    try {
-        const resp = await fetch(base + 'holds.json?t=' + t, { cache: 'no-store' });
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const raw = await resp.json();
-
-        let arr = null;
-        if      (Array.isArray(raw))                 arr = raw;
-        else if (Array.isArray(raw.holds))           arr = raw.holds;
-        else if (Array.isArray(raw.prises))          arr = raw.prises;
-        else if (Array.isArray(raw.points))          arr = raw.points;
-        else if (Array.isArray(raw.holds_positions)) arr = raw.holds_positions;
-        else {
-            const f = Object.values(raw).find(v => Array.isArray(v));
-            if (f) arr = f;
-        }
-        if (!arr || arr.length === 0) throw new Error('tableau vide');
-
-        // Dimensions de référence : imgW/imgH capturés juste après onload (fiables)
-        const refW = imgW || raw.imageWidth || raw.width  || 2000;
-        const refH = imgH || raw.imageHeight || raw.height || 1669;
-        const DEFAULT_R_PCT = 1.2;
-
-        const parsed = [];
-        arr.forEach(item => {
-            const rawX = item.x ?? item.cx ?? item.left ?? item.px ?? null;
-            const rawY = item.y ?? item.cy ?? item.top  ?? item.py ?? null;
-            if (rawX === null || rawY === null) return;
-
-            let x = parseFloat(rawX);
-            let y = parseFloat(rawY);
-            const hasR = (item.r != null || item.radius != null || item.size != null);
-            let r = hasR ? parseFloat(item.r ?? item.radius ?? item.size) : null;
-
-            if (x > 100 || y > 100) {
-                x = x / refW * 100;
-                y = y / refH * 100;
-                r = (r !== null && r > 0) ? r / refW * 100 : DEFAULT_R_PCT;
-            } else {
-                if (r === null || isNaN(r) || r <= 0) r = DEFAULT_R_PCT;
-            }
-
-            x = Math.max(0, Math.min(100, x));
-            y = Math.max(0, Math.min(100, y));
-            parsed.push({ x, y, r });
-        });
-        if (parsed.length === 0) throw new Error('aucune prise valide');
-        holds = parsed;
-        draw();
-    } catch(e) {
-        console.warn('holds.json :', e.message);
-    }
-
-    // ── 3. Carnet : carnet_blocs.json ─────────────────────────────────────
-    try {
-        const resp = await fetch(base + 'carnet_blocs.json?t=' + t, { cache: 'no-store' });
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const raw = await resp.json();
-        let blocs = null;
-        if      (Array.isArray(raw))                  blocs = raw;
-        else if (Array.isArray(raw.carnet_blocs))     blocs = raw.carnet_blocs;
-        else if (Array.isArray(raw.blocs))            blocs = raw.blocs;
-        if (blocs && blocs.length > 0) {
-            localStorage.setItem('escaladeBlocs', JSON.stringify(blocs));
-        }
-    } catch(e) {
-        console.info('carnet_blocs.json :', e.message, '→ localStorage conservé.');
-    }
-
-    renderBlocs();
-}
-
 // ─── INIT ───────────────────────────────────────────────────────────────────
-window.onload = autoLoadAssets;
+window.onload = renderBlocs;
+
 </script>
 </body>
 </html>
