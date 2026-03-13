@@ -649,6 +649,14 @@ function loadJsonHolds(input) {
             return;
         }
 
+        // Dimensions de référence : image chargée > metadata JSON > dimensions connues de pan.png
+        const refW = (img.naturalWidth  > 0 ? img.naturalWidth  : null)
+                  || raw.imageWidth || raw.width  || 2211;
+        const refH = (img.naturalHeight > 0 ? img.naturalHeight : null)
+                  || raw.imageHeight || raw.height || 1846;
+
+        const DEFAULT_R_PCT = 1.2;
+
         // Normaliser chaque prise
         const parsed = [];
         arr.forEach((item, i) => {
@@ -659,26 +667,23 @@ function loadJsonHolds(input) {
 
             let x = parseFloat(rawX);
             let y = parseFloat(rawY);
-            let r = parseFloat(item.r ?? item.radius ?? item.size ?? 1.5);
+            const hasR = (item.r != null || item.radius != null || item.size != null);
+            let r = hasR ? parseFloat(item.r ?? item.radius ?? item.size) : null;
 
-            // Détecter si les coordonnées sont en pixels (valeurs > 100)
-            // → convertir en % sur la base de la taille de l'image chargée
-            const needsConvert = (x > 100 || y > 100);
-            if (needsConvert) {
-                // Si l'image est chargée, utiliser ses dimensions ; sinon width/height du JSON
-                const refW = (img.naturalWidth || raw.width  || raw.imageWidth  || 1000);
-                const refH = (img.naturalHeight || raw.height || raw.imageHeight || 1500);
+            if (x > 100 || y > 100) {
                 x = x / refW * 100;
                 y = y / refH * 100;
-                // r aussi en pixels → %
-                if (r > 10) r = r / refW * 100;
+                if (r !== null && r > 0) {
+                    r = r / refW * 100;
+                } else {
+                    r = DEFAULT_R_PCT;
+                }
+            } else {
+                if (r === null || isNaN(r) || r <= 0) r = DEFAULT_R_PCT;
             }
 
-            // Clamp et valeur par défaut du rayon
             x = Math.max(0, Math.min(100, x));
             y = Math.max(0, Math.min(100, y));
-            if (isNaN(r) || r <= 0) r = 1.5;
-
             parsed.push({ x, y, r });
         });
 
@@ -1409,22 +1414,44 @@ async function autoLoadAssets() {
         }
         if (!arr || arr.length === 0) throw new Error('tableau vide');
 
+        // Dimensions de référence pour la conversion pixels → %
+        // Priorité : image chargée > metadata JSON > fallback
+        const refW = (img.naturalWidth  > 0 ? img.naturalWidth  : null)
+                  || raw.imageWidth || raw.width  || 2211;
+        const refH = (img.naturalHeight > 0 ? img.naturalHeight : null)
+                  || raw.imageHeight || raw.height || 1846;
+
+        // Rayon par défaut : ~1.2% de la largeur (visuellement ~27px sur 2211px)
+        const DEFAULT_R_PCT = 1.2;
+
         const parsed = [];
         arr.forEach(item => {
             const rawX = item.x ?? item.cx ?? item.left ?? item.px ?? null;
             const rawY = item.y ?? item.cy ?? item.top  ?? item.py ?? null;
             if (rawX === null || rawY === null) return;
-            let x = parseFloat(rawX), y = parseFloat(rawY);
-            let r = parseFloat(item.r ?? item.radius ?? item.size ?? 1.5);
+
+            let x = parseFloat(rawX);
+            let y = parseFloat(rawY);
+            const hasR = (item.r != null || item.radius != null || item.size != null);
+            let r = hasR ? parseFloat(item.r ?? item.radius ?? item.size) : null;
+
+            // Coordonnées en pixels (valeurs > 100) → convertir en %
             if (x > 100 || y > 100) {
-                const refW = img.naturalWidth  || raw.width  || 1000;
-                const refH = img.naturalHeight || raw.height || 1500;
-                x = x / refW * 100;  y = y / refH * 100;
-                if (r > 10) r = r / refW * 100;
+                x = x / refW * 100;
+                y = y / refH * 100;
+                // Rayon en pixels aussi → convertir ; sinon rayon par défaut en %
+                if (r !== null && r > 0) {
+                    r = r / refW * 100;
+                } else {
+                    r = DEFAULT_R_PCT;
+                }
+            } else {
+                // Déjà en % — rayon par défaut si absent
+                if (r === null || isNaN(r) || r <= 0) r = DEFAULT_R_PCT;
             }
+
             x = Math.max(0, Math.min(100, x));
             y = Math.max(0, Math.min(100, y));
-            if (isNaN(r) || r <= 0) r = 1.5;
             parsed.push({ x, y, r });
         });
         if (parsed.length === 0) throw new Error('aucune prise valide');
