@@ -1,9 +1,9 @@
 const CACHE_NAME = 'topo-v12';
 const ASSETS = [
-  'Topo_Escalade_v12.html',
-  'manifest.json',
-  'pan.png',
-  'holds.json'
+  './Topo_Escalade_v12.html',
+  './manifest.json',
+  './pan.png',
+  './holds.json'
 ];
 
 // Installation : mise en cache initiale
@@ -24,22 +24,24 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
-// Fetch : Network First — toujours essayer le réseau d'abord
-// Si hors-ligne, utiliser le cache comme fallback
+// Fetch : Network First
+// Clé de cache = URL SANS query params (?t=...) pour que pan.png?t=123
+// corresponde à l'entrée "pan.png" en cache.
 self.addEventListener('fetch', (e) => {
+  if (e.request.method !== 'GET') return;
+
+  // Clé de cache sans query string
+  const cacheKey = new Request(e.request.url.split('?')[0]);
+
   e.respondWith(
     fetch(e.request)
       .then((response) => {
-        // Mettre à jour le cache avec la réponse fraîche
         if (response && response.status === 200) {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+          caches.open(CACHE_NAME).then((cache) => cache.put(cacheKey, clone));
         }
         return response;
       })
-      .catch(() => {
-        // Réseau indisponible → fallback cache
-        return caches.match(e.request);
-      })
+      .catch(() => caches.match(cacheKey))
   );
 });

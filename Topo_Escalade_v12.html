@@ -554,20 +554,28 @@ let touchStartPos = {x:0, y:0};
 let currentBlocId = null; // id du bloc actuellement chargé (null = nouveau)
 
 // ─── URL DE BASE GITHUB ────────────────────────────────────────────────────
-// Déterminée une seule fois : dossier du HTML sur le serveur
+// Construire l'URL de base de façon robuste :
+// - retire le nom du fichier HTML (et tout ce qui suit)
+// - fonctionne que la page soit servie depuis la racine ou un sous-dossier
 function getBase() {
-    return window.location.href.replace(/\?.*$/, '').replace(/\/[^/]*$/, '/');
+    const href = window.location.href
+        .replace(/\?.*$/, '')   // retire les query params
+        .replace(/#.*$/, '');   // retire les hash
+    // Retirer le nom du fichier pour obtenir le dossier
+    return href.endsWith('/') ? href : href.replace(/\/[^/]*$/, '/');
 }
 
 // ─── CHARGEMENT DEPUIS GITHUB ──────────────────────────────────────────────
 // type = 'image' | 'holds' | 'carnet'
+// Le ?t= anti-cache est ajouté sur les JSON (texte).
+// Pour l'image, le SW (network-first) garantit la fraîcheur sans paramètre.
 async function fetchFromGithub(type) {
     const base = getBase();
-    const t    = Date.now(); // anti-cache
+    const t    = Date.now();
 
     if (type === 'image') {
         // ── Photo du mur : pan.png ─────────────────────────────────────────
-        const url = base + 'pan.png?t=' + t;
+        // Pas de ?t= : le SW network-first met à jour le cache automatiquement.
         await new Promise((resolve) => {
             const newImg = new Image();
             newImg.onload = () => {
@@ -583,10 +591,10 @@ async function fetchFromGithub(type) {
                 resolve();
             };
             newImg.onerror = () => {
-                alert('Impossible de charger pan.png depuis GitHub.\nVérifiez que le fichier est bien dans le même dossier que le HTML.');
+                alert('Impossible de charger pan.png.\nVérifiez que le fichier est bien dans le même dossier que le HTML sur GitHub.');
                 resolve();
             };
-            newImg.src = url;
+            newImg.src = base + 'pan.png';
         });
 
     } else if (type === 'holds') {
@@ -597,7 +605,7 @@ async function fetchFromGithub(type) {
             const raw  = await resp.json();
             applyHoldsData(raw);
         } catch(e) {
-            alert('Impossible de charger holds.json depuis GitHub.\n' + e.message);
+            alert('Impossible de charger holds.json.\n' + e.message);
         }
 
     } else if (type === 'carnet') {
@@ -622,7 +630,7 @@ async function fetchFromGithub(type) {
             localStorage.setItem('escaladeBlocs', JSON.stringify(blocs));
             renderBlocs();
         } catch(e) {
-            alert('Impossible de charger carnet_blocs.json depuis GitHub.\n' + e.message);
+            alert('Impossible de charger carnet_blocs.json.\n' + e.message);
         }
     }
 }
