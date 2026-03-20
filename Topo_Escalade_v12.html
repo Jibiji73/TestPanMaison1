@@ -669,8 +669,8 @@ if ('serviceWorker' in navigator) {
         </div>
         <div id="detailList" style="overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch;"></div>
         <button class="btn-cancel" style="margin-top:10px; flex-shrink:0;"
-            ontouchend="document.getElementById('detailModal').classList.remove('open'); return false;"
-            onclick="document.getElementById('detailModal').classList.remove('open')">Fermer</button>
+            ontouchend="closeModal('detailModal'); return false;"
+            onclick="closeModal('detailModal')">Fermer</button>
     </div>
 </div>
 
@@ -680,7 +680,7 @@ if ('serviceWorker' in navigator) {
         <h3>📂 Charger un bloc</h3>
         <div class="load-preview" id="loadPreview"></div>
         <button class="btn-confirm" ontouchend="confirmLoad(); return false;" onclick="confirmLoad()">Charger ce bloc</button>
-        <button class="btn-cancel" ontouchend="document.getElementById('loadModal').classList.remove('open'); return false;" onclick="document.getElementById('loadModal').classList.remove('open')">Annuler</button>
+        <button class="btn-cancel" ontouchend="closeModal('loadModal'); return false;" onclick="closeModal('loadModal')">Annuler</button>
     </div>
 </div>
 
@@ -710,24 +710,57 @@ let isLongPress = false;
 let touchStartPos = {x:0, y:0};
 let currentBlocId = null;
 
+// ─── COMPATIBILITÉ MODALES (Samsung Internet / navigateurs restrictifs) ────
+function openModal(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.display = 'flex';
+    void el.offsetWidth; // forcer reflow avant transition CSS
+    el.classList.add('open');
+}
+function closeModal(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('open');
+    // Retirer display après la transition
+    setTimeout(() => { if (!el.classList.contains('open')) el.style.display = ''; }, 200);
+}
+
+// ─── STOCKAGE UNIVERSEL (localStorage + fallback mémoire pour Samsung/file://) ──
+const _memStore = {};
+const store = {
+    getItem(k) {
+        try { return localStorage.getItem(k); }
+        catch(e) { return _memStore[k] !== undefined ? _memStore[k] : null; }
+    },
+    setItem(k, v) {
+        try { localStorage.setItem(k, v); } catch(e) {}
+        _memStore[k] = v;
+    },
+    removeItem(k) {
+        try { localStorage.removeItem(k); } catch(e) {}
+        delete _memStore[k];
+    }
+};
+
 // ─── GRIMPEURS ─────────────────────────────────────────────────────────────
-const ADMIN = 'JB'; // seul ce grimpeur peut modifier le nom d'un bloc
+const ADMIN = 'JB';
 const DEFAULT_GRIMPEURS = ['JB', 'Emilien', 'Mat', 'Pascal', 'Guillaume'];
 
 function getGrimpeurs() {
     try {
-        const g = JSON.parse(localStorage.getItem('grimpeurs'));
+        const g = JSON.parse(store.getItem('grimpeurs'));
         return Array.isArray(g) && g.length ? g : [...DEFAULT_GRIMPEURS];
     } catch { return [...DEFAULT_GRIMPEURS]; }
 }
 function saveGrimpeurs(list) {
-    localStorage.setItem('grimpeurs', JSON.stringify(list));
+    store.setItem('grimpeurs', JSON.stringify(list));
 }
 function getActiveGrimpeur() {
-    return localStorage.getItem('activeGrimpeur') || ADMIN;
+    return store.getItem('activeGrimpeur') || ADMIN;
 }
 function setActiveGrimpeur(name) {
-    localStorage.setItem('activeGrimpeur', name);
+    store.setItem('activeGrimpeur', name);
     // Mettre à jour le libellé du bouton sans toucher au pseudo-élément CSS ▾
     const btn = document.getElementById('btnGrimpeur');
     btn.firstChild ? btn.firstChild.textContent = name : btn.textContent = name;
@@ -739,11 +772,11 @@ function openGrimpeurModal() {
     if (_grimpeurModalOpen) return;
     _grimpeurModalOpen = true;
     renderGrimpeurList();
-    document.getElementById('grimpeurModal').classList.add('open');
+    openModal('grimpeurModal');
 }
 function closeGrimpeurModal() {
     _grimpeurModalOpen = false;
-    document.getElementById('grimpeurModal').classList.remove('open');
+    closeModal('grimpeurModal');
 }
 function renderGrimpeurList() {
     const list = getGrimpeurs();
@@ -870,7 +903,7 @@ async function fetchFromGithub(type) {
                     blocs = [...blocs.filter(b => !ids.has(b.id)), ...existing];
                 }
             }
-            localStorage.setItem('escaladeBlocs', JSON.stringify(blocs));
+            store.setItem('escaladeBlocs', JSON.stringify(blocs));
             renderBlocs();
         } catch(e) {
             alert('Impossible de charger carnet_blocs.json.\n' + e.message);
@@ -1236,7 +1269,7 @@ function openSaveModal() {
     document.getElementById('blocStatus').value = 'Projet';
     document.getElementById('blocComment').value = '';
     setStars(0);
-    document.getElementById('saveModal').classList.add('open');
+    openModal('saveModal');
 }
 
 function openUpdateModal() {
@@ -1262,11 +1295,11 @@ function openUpdateModal() {
     document.getElementById('blocStatus').value  = perso.statut   || bloc.statut   || 'Projet';
     document.getElementById('blocComment').value = perso.commentaire !== undefined ? perso.commentaire : (bloc.commentaire || '');
     setStars(perso.stars !== undefined ? perso.stars : (bloc.stars || 0));
-    document.getElementById('saveModal').classList.add('open');
+    openModal('saveModal');
 }
 
 function closeSaveModal() {
-    document.getElementById('saveModal').classList.remove('open');
+    closeModal('saveModal');
 }
 function saveModalConfirm() {
     if (_saveModalMode === 'update') updateBlocData();
@@ -1306,7 +1339,7 @@ function saveBlocData() {
     let saved = getBlocs();
     saved.push(bloc);
     saved.sort((a, b) => (b.date || 0) - (a.date || 0));
-    localStorage.setItem('escaladeBlocs', JSON.stringify(saved));
+    store.setItem('escaladeBlocs', JSON.stringify(saved));
     currentBlocId = bloc.id;
     showUpdateBtn(true);
     closeSaveModal();
@@ -1340,7 +1373,7 @@ function updateBlocData() {
         stars:       _stars,
     };
     saved.sort((a, b) => (b.date || 0) - (a.date || 0));
-    localStorage.setItem('escaladeBlocs', JSON.stringify(saved));
+    store.setItem('escaladeBlocs', JSON.stringify(saved));
     closeSaveModal();
     renderBlocs();
 }
@@ -1349,7 +1382,7 @@ function deleteBlocFromModal() {
     if (!currentBlocId) return;
     if (!confirm('Supprimer définitivement ce bloc du carnet ?')) return;
     let saved = getBlocs().filter(b => b.id !== currentBlocId);
-    localStorage.setItem('escaladeBlocs', JSON.stringify(saved));
+    store.setItem('escaladeBlocs', JSON.stringify(saved));
     currentBlocId = null;
     showUpdateBtn(false);
     pathData = [];
@@ -1388,7 +1421,7 @@ function generateThumb() {
 
 // ─── BASE DE DONNÉES LOCALE ────────────────────────────────────────────────
 function getBlocs() {
-    try { return JSON.parse(localStorage.getItem('escaladeBlocs')) || []; }
+    try { return JSON.parse(store.getItem('escaladeBlocs')) || []; }
     catch { return []; }
 }
 
@@ -1438,7 +1471,7 @@ function importCarnetLocal(input) {
                 blocs = [...blocs.filter(b => !ids.has(b.id)), ...existing];
             }
         }
-        localStorage.setItem('escaladeBlocs', JSON.stringify(blocs));
+        store.setItem('escaladeBlocs', JSON.stringify(blocs));
         renderBlocs();
         input.value = ''; // permet de recharger le même fichier
     };
@@ -1657,7 +1690,7 @@ function openDetailModal(bloc) {
             });
     }
 
-    document.getElementById('detailModal').classList.add('open');
+    openModal('detailModal');
 }
 
 // ─── CHARGER UN BLOC SAUVEGARDÉ ────────────────────────────────────────────
@@ -1678,7 +1711,7 @@ function loadBloc(bloc) {
     const PANEL_MAX = 0.85; // fraction de la hauteur dispo
 
     // Hauteur initiale : 240px ou sauvegardée
-    const savedH = parseInt(localStorage.getItem('panelHeight')) || 240;
+    const savedH = parseInt(store.getItem('panelHeight')) || 240;
     panel.style.height = savedH + 'px';
 
     let dragging = false, startY = 0, startH = 0;
@@ -1705,7 +1738,7 @@ function loadBloc(bloc) {
         dragging = false;
         divider.classList.remove('dragging');
         document.body.style.userSelect = '';
-        localStorage.setItem('panelHeight', panel.offsetHeight);
+        store.setItem('panelHeight', panel.offsetHeight);
     }
 
     // Mouse
