@@ -7,7 +7,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Topo Escalade">
-    <meta name="theme-color" content="#111111">
+    <meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
     <title>Topo Escalade</title>
     <style>
         :root {
@@ -486,6 +487,33 @@
             margin-top: 3px; line-height: 1.4;
         }
         .detail-empty { color: var(--text2); font-size: 12px; text-align: center; padding: 12px 0; }
+        .grimpeur-detail-row { cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+        .grimpeur-detail-row:active { opacity: 0.7; }
+        .gdr-active {
+            border-color: var(--blue) !important;
+            background: rgba(10,132,255,0.13) !important;
+        }
+        .gdr-active .gdr-name { color: var(--blue); }
+
+        /* ── Compatibilité mode clair système ── */
+        @media (prefers-color-scheme: light) {
+            :root {
+                --bg: #f2f2f7;
+                --surface: #ffffff;
+                --surface2: #e5e5ea;
+                --border: #c6c6c8;
+                --text: #1c1c1e;
+                --text2: #6c6c70;
+                --green: #28a745;
+                --blue: #007aff;
+                --red: #ff3b30;
+                --yellow: #c8a000;
+                --orange: #e07000;
+            }
+            body { background: var(--bg); }
+            .modal-overlay { background: rgba(0,0,0,0.4); }
+            canvas { filter: none; }
+        }
 
         .tap-flash {
             position: absolute;
@@ -724,6 +752,9 @@ function getActiveGrimpeur() {
 function setActiveGrimpeur(name) {
     localStorage.setItem('activeGrimpeur', name);
     document.getElementById('btnGrimpeur').textContent = name;
+    // Réinitialiser les filtres pour toujours voir la liste complète
+    activeFilters.clear();
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
     renderBlocs();
 }
 
@@ -1612,9 +1643,10 @@ function openDetailModal(bloc) {
             return ra - rb || a[0].localeCompare(b[0]);
         });
 
+        const activeGrimpeur = getActiveGrimpeur();
         entries.forEach(([grimpeur, p]) => {
             const row = document.createElement('div');
-            row.className = 'grimpeur-detail-row';
+            row.className = 'grimpeur-detail-row' + (grimpeur === activeGrimpeur ? ' gdr-active' : '');
 
             const niv = p.niveau || '';
             const stars = p.stars || 0;
@@ -1637,6 +1669,13 @@ function openDetailModal(bloc) {
                     ${comment ? `<div class="gdr-comment">${comment}</div>` : ''}
                 </div>
             `;
+            // Appui simple → sélectionner ce grimpeur
+            function selectThisGrimpeur() {
+                setActiveGrimpeur(grimpeur);
+                document.getElementById('detailModal').classList.remove('open');
+            }
+            row.addEventListener('click', selectThisGrimpeur);
+            row.addEventListener('touchend', (e) => { e.preventDefault(); selectThisGrimpeur(); });
             list.appendChild(row);
         });
     }
