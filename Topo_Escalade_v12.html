@@ -298,13 +298,34 @@
         }
         .statut-realise { background: var(--green); }
         .statut-projet   { background: var(--orange); }
-        .btn-del {
-            background: none; border: none; color: var(--red);
-            font-size: 15px; padding: 6px; cursor: pointer; flex-shrink: 0;
-            touch-action: manipulation;
-            min-width: 30px; min-height: 30px;
-        }
+        .bloc-stars { font-size: 11px; flex-shrink: 0; letter-spacing: 0; }
         .empty-msg { color: var(--text2); font-size: 12px; text-align: center; padding: 20px; }
+
+        /* Sélecteur d'étoiles dans la modal */
+        .star-row {
+            display: flex; align-items: center; gap: 4px;
+            margin-bottom: 8px;
+        }
+        .star-row span { font-size: 12px; color: var(--text2); margin-right: 4px; }
+        .star-btn {
+            background: none; border: none;
+            font-size: 24px; line-height: 1;
+            cursor: pointer; padding: 2px 3px;
+            touch-action: manipulation;
+            transition: transform 0.1s;
+        }
+        .star-btn:active { transform: scale(1.25); }
+
+        /* Bouton supprimer dans la modal (mode modification uniquement) */
+        .btn-modal-delete {
+            width: 100%; padding: 10px;
+            background: rgba(255,69,58,0.12);
+            color: var(--red);
+            border: 1px solid rgba(255,69,58,0.4);
+            border-radius: 9px; font-size: 13px; font-weight: 600;
+            cursor: pointer; margin-top: 8px;
+            touch-action: manipulation;
+        }
 
         /* MODAL */
         .modal-overlay {
@@ -425,7 +446,6 @@ if ('serviceWorker' in navigator) {
         <div class="leg"><div class="leg-dot" style="border-color:#0a84ff"></div><span>Main</span></div>
         <div class="leg"><div class="leg-dot" style="border-color:#ff453a"></div><span>Top</span></div>
         <div class="leg"><div class="leg-dot" style="border-color:#ffd60a"></div><span>Pied</span></div>
-        <span style="font-size:9px;color:var(--text2);margin-left:2px">2×tap=cycle · 3×tap=pied</span>
     </div>
 </div>
 
@@ -479,6 +499,9 @@ if ('serviceWorker' in navigator) {
         <button class="filter-btn" data-filter="8A+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">8A+</button>
         <button class="filter-btn" data-filter="8B" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">8B</button>
         <button class="filter-btn" data-filter="8B+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">8B+</button>
+        <button class="filter-btn" data-filter="s1" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">★</button>
+        <button class="filter-btn" data-filter="s2" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">★★</button>
+        <button class="filter-btn" data-filter="s3" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">★★★</button>
     </div>
     <div class="blocs-list" id="itemsWrapper"></div>
 </div>
@@ -512,9 +535,20 @@ if ('serviceWorker' in navigator) {
             <option value="Projet">🔴 Projet</option>
             <option value="Réalisé">✅ Réalisé</option>
         </select>
+        <!-- Sélecteur d'étoiles 0-3 -->
+        <div class="star-row">
+            <span>Note :</span>
+            <button type="button" class="star-btn" id="starBtn0" ontouchend="setStars(0);return false;" onclick="setStars(0)">☆</button>
+            <button type="button" class="star-btn" id="starBtn1" ontouchend="setStars(1);return false;" onclick="setStars(1)">☆</button>
+            <button type="button" class="star-btn" id="starBtn2" ontouchend="setStars(2);return false;" onclick="setStars(2)">☆</button>
+            <button type="button" class="star-btn" id="starBtn3" ontouchend="setStars(3);return false;" onclick="setStars(3)">☆</button>
+        </div>
         <textarea id="blocComment" placeholder="Commentaire, beta, conseil..."></textarea>
         <button class="btn-confirm" id="saveModalConfirmBtn" ontouchend="saveModalConfirm(); return false;" onclick="saveModalConfirm()">Confirmer l'enregistrement</button>
         <button class="btn-cancel" ontouchend="closeSaveModal(); return false;" onclick="closeSaveModal()">Annuler</button>
+        <!-- Bouton supprimer : visible seulement en mode modification -->
+        <button class="btn-modal-delete" id="btnModalDelete" style="display:none"
+            ontouchend="deleteBlocFromModal(); return false;" onclick="deleteBlocFromModal()">🗑️ Supprimer ce bloc</button>
     </div>
 </div>
 
@@ -949,8 +983,25 @@ function resetAll() {
     draw();
 }
 
+// ─── ÉTOILES ───────────────────────────────────────────────────────────────
+let _stars = 0;
+
+function setStars(n) {
+    _stars = n;
+    for (let i = 1; i <= 3; i++) {
+        document.getElementById('starBtn' + i).textContent = i <= n ? '★' : '☆';
+    }
+    // Remettre le bouton 0 (aucune étoile) toujours à ☆
+    document.getElementById('starBtn0').textContent = n === 0 ? '✕' : '☆';
+}
+
+function renderStars(n) {
+    if (!n || n <= 0) return '';
+    return '★'.repeat(n) + '☆'.repeat(3 - n);
+}
+
 // ─── SAUVEGARDE ────────────────────────────────────────────────────────────
-let _saveModalMode = 'new'; // 'new' | 'update'
+let _saveModalMode = 'new';
 
 function openSaveModal() {
     if (pathData.length === 0) { alert('Sélectionnez au moins une prise avant d\'enregistrer.'); return; }
@@ -959,11 +1010,12 @@ function openSaveModal() {
     document.getElementById('saveModalTitle').textContent = '💾 Enregistrer le bloc';
     document.getElementById('saveModalConfirmBtn').textContent = 'Confirmer l\'enregistrement';
     document.getElementById('saveModalConfirmBtn').style.background = 'var(--green)';
-    // Réinitialiser les champs
+    document.getElementById('btnModalDelete').style.display = 'none';
     document.getElementById('blocName').value = '';
     document.getElementById('blocLevel').value = '6A';
     document.getElementById('blocStatus').value = 'Projet';
     document.getElementById('blocComment').value = '';
+    setStars(0);
     document.getElementById('saveModal').classList.add('open');
 }
 
@@ -977,11 +1029,12 @@ function openUpdateModal() {
     document.getElementById('saveModalTitle').textContent = '✏️ Modifier le bloc';
     document.getElementById('saveModalConfirmBtn').textContent = 'Enregistrer les modifications';
     document.getElementById('saveModalConfirmBtn').style.background = 'var(--orange)';
-    // Pré-remplir avec les valeurs existantes
+    document.getElementById('btnModalDelete').style.display = '';
     document.getElementById('blocName').value = bloc.nom;
     document.getElementById('blocLevel').value = bloc.niveau;
     document.getElementById('blocStatus').value = bloc.statut;
     document.getElementById('blocComment').value = bloc.commentaire || '';
+    setStars(bloc.stars || 0);
     document.getElementById('saveModal').classList.add('open');
 }
 
@@ -994,21 +1047,33 @@ function saveModalConfirm() {
     else saveBlocData();
 }
 
+// Formate une date en jj/mm/aaaa depuis un timestamp ou ISO string
+function fmtDate(d) {
+    if (!d) return '';
+    const dt = new Date(d);
+    if (isNaN(dt)) return String(d).split(' ')[0]; // fallback : garder tel quel
+    return dt.toLocaleDateString('fr-FR');
+}
+
 function saveBlocData() {
     const thumb = generateThumb();
+    const now = Date.now();
     const bloc = {
-        id: Date.now(),
+        id: now,
         nom: document.getElementById('blocName').value || 'Bloc sans titre',
         niveau: document.getElementById('blocLevel').value,
         statut: document.getElementById('blocStatus').value,
         commentaire: document.getElementById('blocComment').value,
+        stars: _stars,
         prises: JSON.parse(JSON.stringify(pathData)),
         holds: JSON.parse(JSON.stringify(holds)),
         thumb,
-        date: new Date().toLocaleString('fr-FR'),
+        date: now, // timestamp ms — fiable pour le tri
     };
     let saved = getBlocs();
-    saved.unshift(bloc);
+    saved.push(bloc);
+    // Toujours trier par date décroissante
+    saved.sort((a, b) => (b.date || 0) - (a.date || 0));
     localStorage.setItem('escaladeBlocs', JSON.stringify(saved));
     currentBlocId = bloc.id;
     showUpdateBtn(true);
@@ -1025,19 +1090,35 @@ function updateBlocData() {
     let saved = getBlocs();
     const idx = saved.findIndex(b => b.id === currentBlocId);
     if (idx === -1) { alert('Bloc introuvable.'); closeSaveModal(); return; }
-    // Conserver l'id et la date originale, mettre à jour le reste
+    // Conserver date d'origine — pas de dateModif
     saved[idx] = {
         ...saved[idx],
         nom: document.getElementById('blocName').value || saved[idx].nom,
         niveau: document.getElementById('blocLevel').value,
         statut: document.getElementById('blocStatus').value,
         commentaire: document.getElementById('blocComment').value,
+        stars: _stars,
         prises: JSON.parse(JSON.stringify(pathData)),
         holds: JSON.parse(JSON.stringify(holds)),
         thumb,
-        dateModif: new Date().toLocaleString('fr-FR'),
+        // date inchangée intentionnellement
     };
+    // Re-trier
+    saved.sort((a, b) => (b.date || 0) - (a.date || 0));
     localStorage.setItem('escaladeBlocs', JSON.stringify(saved));
+    closeSaveModal();
+    renderBlocs();
+}
+
+function deleteBlocFromModal() {
+    if (!currentBlocId) return;
+    if (!confirm('Supprimer définitivement ce bloc du carnet ?')) return;
+    let saved = getBlocs().filter(b => b.id !== currentBlocId);
+    localStorage.setItem('escaladeBlocs', JSON.stringify(saved));
+    currentBlocId = null;
+    showUpdateBtn(false);
+    pathData = [];
+    draw();
     closeSaveModal();
     renderBlocs();
 }
@@ -1046,23 +1127,28 @@ function showUpdateBtn(visible) {
     document.getElementById('btnUpdate').style.display = visible ? '' : 'none';
 }
 
+// Vignette : fond blanc + cercles colorés des prises sélectionnées, sans photo
 function generateThumb() {
-    const tc = document.createElement('canvas');
-    tc.width = 120; tc.height = 160;
+    const tc  = document.createElement('canvas');
+    tc.width  = 120; tc.height = 160;
     const tcx = tc.getContext('2d');
-    tcx.drawImage(img, 0, 0, 120, 160);
+    tcx.fillStyle = '#ffffff';
+    tcx.fillRect(0, 0, 120, 160);
     pathData.forEach((item) => {
         const h = holds[item.id];
         if (!h) return;
         const x = h.x * 120 / 100;
         const y = h.y * 160 / 100;
-        const r = Math.max(2, h.r * 120 / 100);
-        tcx.beginPath(); tcx.arc(x, y, r+2, 0, Math.PI*2);
-        tcx.strokeStyle = getHoldColor(item.type);
-        tcx.lineWidth = 2;
-        tcx.stroke();
+        const r = Math.max(3, h.r * 120 / 100);
+        const col = getHoldColor(item.type);
+        // Halo semi-transparent
+        tcx.beginPath(); tcx.arc(x, y, r + 4, 0, Math.PI * 2);
+        tcx.fillStyle = col + '30'; tcx.fill();
+        // Contour plein
+        tcx.beginPath(); tcx.arc(x, y, r + 2, 0, Math.PI * 2);
+        tcx.strokeStyle = col; tcx.lineWidth = 2.5; tcx.stroke();
     });
-    return tc.toDataURL('image/jpeg', 0.6);
+    return tc.toDataURL('image/png');
 }
 
 // ─── BASE DE DONNÉES LOCALE ────────────────────────────────────────────────
@@ -1146,14 +1232,23 @@ function resetFilters(e) {
 }
 
 function renderBlocs() {
-    const all = getBlocs();
+    let all = getBlocs();
+    // Toujours trier par date décroissante (timestamp ou fallback)
+    all.sort((a, b) => (b.date || 0) - (a.date || 0));
+
     let filtered;
     if (activeFilters.size === 0) {
         filtered = all;
     } else {
-        filtered = all.filter(b =>
-            activeFilters.has(b.niveau) || activeFilters.has(b.statut)
-        );
+        filtered = all.filter(b => {
+            for (const f of activeFilters) {
+                if (f === 's1' && (b.stars || 0) === 1) return true;
+                if (f === 's2' && (b.stars || 0) === 2) return true;
+                if (f === 's3' && (b.stars || 0) === 3) return true;
+                if (b.niveau === f || b.statut === f) return true;
+            }
+            return false;
+        });
     }
 
     document.getElementById('blocCount').textContent = `${all.length} bloc(s)`;
@@ -1168,45 +1263,32 @@ function renderBlocs() {
     filtered.forEach(bloc => {
         const levelClass = getLevelClass(bloc.niveau);
         const statutClass = bloc.statut === 'Réalisé' ? 'statut-realise' : 'statut-projet';
+        const dateStr   = fmtDate(bloc.date);
+        const starsStr  = renderStars(bloc.stars || 0);
 
         const div = document.createElement('div');
         div.className = 'bloc-item';
         div.innerHTML = `
-            <div class="bloc-thumb">
-                ${bloc.thumb ? `<img src="${bloc.thumb}" alt="thumb">` : '🧗'}
+            <div class="bloc-thumb" style="background:#fff;">
+                ${bloc.thumb ? `<img src="${bloc.thumb}" alt="">` : '🧗'}
             </div>
             <div class="bloc-info">
                 <div class="bloc-name">${bloc.nom}</div>
-                <div class="bloc-meta">${bloc.dateModif ? '✏️ ' + bloc.dateModif : bloc.date}${bloc.commentaire ? ' · ' + bloc.commentaire.slice(0,40) : ''}</div>
+                <div class="bloc-meta">${dateStr}${bloc.commentaire ? ' · ' + bloc.commentaire.slice(0, 38) : ''}</div>
             </div>
+            ${starsStr ? `<span class="bloc-stars">${starsStr}</span>` : ''}
             <span class="bloc-level ${levelClass}">${bloc.niveau}</span>
             <div class="statut-dot ${statutClass}"></div>
-            <span style="font-size:9px;color:var(--text2);flex-shrink:0">2×tap</span>
-            <button class="btn-del">✕</button>
         `;
 
-        // Bouton supprimer
-        const delBtn = div.querySelector('.btn-del');
-        delBtn.addEventListener('touchend', (ev) => {
-            ev.preventDefault(); ev.stopPropagation();
-            deleteBloc(bloc.id);
-        });
-        delBtn.addEventListener('click', (ev) => {
-            ev.stopPropagation();
-            deleteBloc(bloc.id);
-        });
-
-        // ── Double tap pour charger le bloc ──────────────────────────────
+        // Double tap / dblclick pour charger le bloc
         let blocTapCount = 0, blocTapTimer = null;
-
         function triggerBlocLoad() {
             div.style.borderColor = 'var(--blue)';
             setTimeout(() => { div.style.borderColor = ''; }, 300);
             loadBloc(bloc);
         }
-
         div.addEventListener('touchend', (ev) => {
-            if (ev.target === delBtn || ev.target.closest('.btn-del')) return;
             ev.preventDefault();
             blocTapCount++;
             clearTimeout(blocTapTimer);
@@ -1215,11 +1297,7 @@ function renderBlocs() {
                 blocTapCount = 0;
             }, 300);
         });
-
-        div.addEventListener('dblclick', (ev) => {
-            if (ev.target === delBtn || ev.target.closest('.btn-del')) return;
-            triggerBlocLoad();
-        });
+        div.addEventListener('dblclick', () => triggerBlocLoad());
 
         wrapper.appendChild(div);
     });
@@ -1232,13 +1310,6 @@ function getLevelClass(n) {
     if (['7A','7A+','7B','7B+','7C','7C+'].includes(n)) return 'level-rouge';
     if (['8A','8A+','8B','8B+'].includes(n)) return 'level-orange';
     return 'level-noir';
-}
-
-function deleteBloc(id) {
-    if (!confirm('Supprimer ce bloc du carnet ?')) return;
-    let saved = getBlocs().filter(b => b.id !== id);
-    localStorage.setItem('escaladeBlocs', JSON.stringify(saved));
-    renderBlocs();
 }
 
 // ─── CHARGER UN BLOC SAUVEGARDÉ ────────────────────────────────────────────
