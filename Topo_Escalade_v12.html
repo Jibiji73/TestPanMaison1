@@ -521,12 +521,12 @@ if ('serviceWorker' in navigator) {
 </script>
 
 <div class="toolbar">
-    <button ontouchend="fetchFromGithub('image'); return false;" onclick="fetchFromGithub('image')">📷 Photo mur</button>
-    <button ontouchend="fetchFromGithub('holds'); return false;" onclick="fetchFromGithub('holds')">📌 Prises</button>
-    <button class="btn-save" ontouchend="openSaveModal(); return false;" onclick="openSaveModal()">💾 Sauver</button>
-    <button class="btn-update" id="btnUpdate" ontouchend="openUpdateModal(); return false;" onclick="openUpdateModal()" style="display:none">✏️ Modifier</button>
-    <button class="btn-export" ontouchend="downloadImage(); return false;" onclick="downloadImage()">🖼️ Export</button>
-    <button class="btn-reset" ontouchend="resetAll(); return false;" onclick="resetAll()">🗑️ Reset</button>
+    <button onclick="fetchFromGithub('image')">📷 Photo mur</button>
+    <button onclick="fetchFromGithub('holds')">📌 Prises</button>
+    <button class="btn-save" onclick="openSaveModal()">💾 Sauver</button>
+    <button class="btn-update" id="btnUpdate" onclick="openUpdateModal()" style="display:none">✏️ Modifier</button>
+    <button class="btn-export" onclick="downloadImage()">🖼️ Export</button>
+    <button class="btn-reset" onclick="resetAll()">🗑️ Reset</button>
     <div class="legend">
         <div class="leg"><div class="leg-dot" style="border-color:#30d158"></div><span>Départ</span></div>
         <div class="leg"><div class="leg-dot" style="border-color:#0a84ff"></div><span>Main</span></div>
@@ -556,42 +556,40 @@ if ('serviceWorker' in navigator) {
 <div class="panel" id="panel">
     <div class="panel-header">
         <span class="panel-title">
-            <button class="btn-grimpeur" id="btnGrimpeur"
-                ontouchend="event.preventDefault(); openGrimpeurModal();"
-                onclick="openGrimpeurModal()">JB</button>
+            <button class="btn-grimpeur" id="btnGrimpeur">JB</button>
         </span>
         <div class="carnet-btns">
-            <label class="btn-carnet btn-carnet-load" for="uploadCarnet" ontouchend="this.click(); return false;" title="Charger carnet_blocs.json depuis l'appareil">📂 Charger</label>
+            <label class="btn-carnet btn-carnet-load" for="uploadCarnet" title="Charger carnet_blocs.json depuis l'appareil">📂 Charger</label>
             <input type="file" id="uploadCarnet" accept=".json,application/json" style="display:none" onchange="importCarnetLocal(this)">
-            <button class="btn-carnet btn-carnet-save" ontouchend="exportCarnetLocal(); return false;" onclick="exportCarnetLocal()" title="Enregistrer carnet_blocs.json sur l'appareil">💾 Sauver</button>
+            <button class="btn-carnet btn-carnet-save" onclick="exportCarnetLocal()" title="Enregistrer carnet_blocs.json sur l'appareil">💾 Sauver</button>
             <span id="blocCount" style="font-size:11px; color:var(--text2); margin-left:4px">0 bloc(s)</span>
         </div>
     </div>
     <div class="filter-row" id="filterRow">
-        <button class="filter-btn-reset" id="btnResetFilter" ontouchend="resetFilters(event)" onclick="resetFilters(event)">Tous</button>
-        <button class="filter-btn" data-filter="Réalisé" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">✅ Réalisé</button>
-        <button class="filter-btn" data-filter="Projet" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">🔴 Projet</button>
-        <button class="filter-btn" data-filter="4" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">Jaune</button>
-        <button class="filter-btn" data-filter="5" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">Bleu</button>
-        <button class="filter-btn" data-filter="6A" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">6A</button>
-        <button class="filter-btn" data-filter="6A+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">6A+</button>
-        <button class="filter-btn" data-filter="6B" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">6B</button>
-        <button class="filter-btn" data-filter="6B+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">6B+</button>
-        <button class="filter-btn" data-filter="6C" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">6C</button>
-        <button class="filter-btn" data-filter="6C+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">6C+</button>
-        <button class="filter-btn" data-filter="7A" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">7A</button>
-        <button class="filter-btn" data-filter="7A+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">7A+</button>
-        <button class="filter-btn" data-filter="7B" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">7B</button>
-        <button class="filter-btn" data-filter="7B+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">7B+</button>
-        <button class="filter-btn" data-filter="7C" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">7C</button>
-        <button class="filter-btn" data-filter="7C+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">7C+</button>
-        <button class="filter-btn" data-filter="8A" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">8A</button>
-        <button class="filter-btn" data-filter="8A+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">8A+</button>
-        <button class="filter-btn" data-filter="8B" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">8B</button>
-        <button class="filter-btn" data-filter="8B+" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">8B+</button>
-        <button class="filter-btn" data-filter="s1" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">★</button>
-        <button class="filter-btn" data-filter="s2" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">★★</button>
-        <button class="filter-btn" data-filter="s3" ontouchend="toggleFilter(this, event)" onclick="toggleFilter(this, event)">★★★</button>
+        <button class="filter-btn-reset" id="btnResetFilter" onclick="resetFilters(event)">Tous</button>
+        <button class="filter-btn" data-filter="Réalisé" onclick="toggleFilter(this, event)">✅ Réalisé</button>
+        <button class="filter-btn" data-filter="Projet" onclick="toggleFilter(this, event)">🔴 Projet</button>
+        <button class="filter-btn" data-filter="4" onclick="toggleFilter(this, event)">Jaune</button>
+        <button class="filter-btn" data-filter="5" onclick="toggleFilter(this, event)">Bleu</button>
+        <button class="filter-btn" data-filter="6A" onclick="toggleFilter(this, event)">6A</button>
+        <button class="filter-btn" data-filter="6A+" onclick="toggleFilter(this, event)">6A+</button>
+        <button class="filter-btn" data-filter="6B" onclick="toggleFilter(this, event)">6B</button>
+        <button class="filter-btn" data-filter="6B+" onclick="toggleFilter(this, event)">6B+</button>
+        <button class="filter-btn" data-filter="6C" onclick="toggleFilter(this, event)">6C</button>
+        <button class="filter-btn" data-filter="6C+" onclick="toggleFilter(this, event)">6C+</button>
+        <button class="filter-btn" data-filter="7A" onclick="toggleFilter(this, event)">7A</button>
+        <button class="filter-btn" data-filter="7A+" onclick="toggleFilter(this, event)">7A+</button>
+        <button class="filter-btn" data-filter="7B" onclick="toggleFilter(this, event)">7B</button>
+        <button class="filter-btn" data-filter="7B+" onclick="toggleFilter(this, event)">7B+</button>
+        <button class="filter-btn" data-filter="7C" onclick="toggleFilter(this, event)">7C</button>
+        <button class="filter-btn" data-filter="7C+" onclick="toggleFilter(this, event)">7C+</button>
+        <button class="filter-btn" data-filter="8A" onclick="toggleFilter(this, event)">8A</button>
+        <button class="filter-btn" data-filter="8A+" onclick="toggleFilter(this, event)">8A+</button>
+        <button class="filter-btn" data-filter="8B" onclick="toggleFilter(this, event)">8B</button>
+        <button class="filter-btn" data-filter="8B+" onclick="toggleFilter(this, event)">8B+</button>
+        <button class="filter-btn" data-filter="s1" onclick="toggleFilter(this, event)">★</button>
+        <button class="filter-btn" data-filter="s2" onclick="toggleFilter(this, event)">★★</button>
+        <button class="filter-btn" data-filter="s3" onclick="toggleFilter(this, event)">★★★</button>
     </div>
     <div class="blocs-list" id="itemsWrapper"></div>
 </div>
@@ -629,17 +627,16 @@ if ('serviceWorker' in navigator) {
         <!-- Sélecteur d'étoiles 0-3 -->
         <div class="star-row">
             <span>Note :</span>
-            <button type="button" class="star-btn" id="starBtn0" ontouchend="setStars(0);return false;" onclick="setStars(0)">☆</button>
-            <button type="button" class="star-btn" id="starBtn1" ontouchend="setStars(1);return false;" onclick="setStars(1)">☆</button>
-            <button type="button" class="star-btn" id="starBtn2" ontouchend="setStars(2);return false;" onclick="setStars(2)">☆</button>
-            <button type="button" class="star-btn" id="starBtn3" ontouchend="setStars(3);return false;" onclick="setStars(3)">☆</button>
+            <button type="button" class="star-btn" id="starBtn0" onclick="setStars(0)">☆</button>
+            <button type="button" class="star-btn" id="starBtn1" onclick="setStars(1)">☆</button>
+            <button type="button" class="star-btn" id="starBtn2" onclick="setStars(2)">☆</button>
+            <button type="button" class="star-btn" id="starBtn3" onclick="setStars(3)">☆</button>
         </div>
         <textarea id="blocComment" placeholder="Commentaire, beta, conseil..."></textarea>
-        <button class="btn-confirm" id="saveModalConfirmBtn" ontouchend="saveModalConfirm(); return false;" onclick="saveModalConfirm()">Confirmer l'enregistrement</button>
-        <button class="btn-cancel" ontouchend="closeSaveModal(); return false;" onclick="closeSaveModal()">Annuler</button>
+        <button class="btn-confirm" id="saveModalConfirmBtn" onclick="saveModalConfirm()">Confirmer l'enregistrement</button>
+        <button class="btn-cancel" onclick="closeSaveModal()">Annuler</button>
         <!-- Bouton supprimer : visible seulement en mode modification -->
-        <button class="btn-modal-delete" id="btnModalDelete" style="display:none"
-            ontouchend="deleteBlocFromModal(); return false;" onclick="deleteBlocFromModal()">🗑️ Supprimer ce bloc</button>
+        <button class="btn-modal-delete" id="btnModalDelete" style="display:none" onclick="deleteBlocFromModal()">🗑️ Supprimer ce bloc</button>
     </div>
 </div>
 
@@ -650,10 +647,10 @@ if ('serviceWorker' in navigator) {
         <div class="grimpeur-list" id="grimpeurList"></div>
         <div class="grimpeur-add-row">
             <input type="text" id="newGrimpeurInput" placeholder="Nouveau grimpeur…" maxlength="20">
-            <button ontouchend="addGrimpeur(); return false;" onclick="addGrimpeur()">+ Ajouter</button>
+            <button onclick="addGrimpeur()">+ Ajouter</button>
         </div>
         <button class="btn-cancel" style="margin-top:10px"
-            ontouchend="closeGrimpeurModal(); return false;" onclick="closeGrimpeurModal()">Fermer</button>
+            onclick="closeGrimpeurModal()">Fermer</button>
     </div>
 </div>
 
@@ -669,7 +666,6 @@ if ('serviceWorker' in navigator) {
         </div>
         <div id="detailList" style="overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch;"></div>
         <button class="btn-cancel" style="margin-top:10px; flex-shrink:0;"
-            ontouchend="closeModal('detailModal'); return false;"
             onclick="closeModal('detailModal')">Fermer</button>
     </div>
 </div>
@@ -679,8 +675,8 @@ if ('serviceWorker' in navigator) {
     <div class="modal">
         <h3>📂 Charger un bloc</h3>
         <div class="load-preview" id="loadPreview"></div>
-        <button class="btn-confirm" ontouchend="confirmLoad(); return false;" onclick="confirmLoad()">Charger ce bloc</button>
-        <button class="btn-cancel" ontouchend="closeModal('loadModal'); return false;" onclick="closeModal('loadModal')">Annuler</button>
+        <button class="btn-confirm" onclick="confirmLoad()">Charger ce bloc</button>
+        <button class="btn-cancel" onclick="closeModal('loadModal')">Annuler</button>
     </div>
 </div>
 
@@ -710,20 +706,18 @@ let isLongPress = false;
 let touchStartPos = {x:0, y:0};
 let currentBlocId = null;
 
-// ─── COMPATIBILITÉ MODALES (Samsung Internet / navigateurs restrictifs) ────
+// ─── COMPATIBILITÉ MODALES (Samsung Internet) ────────────────────────────
 function openModal(id) {
     const el = document.getElementById(id);
     if (!el) return;
-    el.style.display = 'flex';
-    void el.offsetWidth; // forcer reflow avant transition CSS
+    el.style.cssText = 'display:flex !important';
     el.classList.add('open');
 }
 function closeModal(id) {
     const el = document.getElementById(id);
     if (!el) return;
     el.classList.remove('open');
-    // Retirer display après la transition
-    setTimeout(() => { if (!el.classList.contains('open')) el.style.display = ''; }, 200);
+    el.style.cssText = '';
 }
 
 // ─── STOCKAGE UNIVERSEL (localStorage + fallback mémoire pour Samsung/file://) ──
@@ -767,15 +761,11 @@ function setActiveGrimpeur(name) {
     renderBlocs();
 }
 
-let _grimpeurModalOpen = false;
 function openGrimpeurModal() {
-    if (_grimpeurModalOpen) return;
-    _grimpeurModalOpen = true;
     renderGrimpeurList();
     openModal('grimpeurModal');
 }
 function closeGrimpeurModal() {
-    _grimpeurModalOpen = false;
     closeModal('grimpeurModal');
 }
 function renderGrimpeurList() {
@@ -794,16 +784,9 @@ function renderGrimpeurList() {
             setActiveGrimpeur(name);
             closeGrimpeurModal();
         });
-        row.querySelector('.grimpeur-sel').addEventListener('touchend', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setActiveGrimpeur(name);
-            closeGrimpeurModal();
-        });
         const delBtn = row.querySelector('.btn-grimpeur-del');
         if (delBtn) {
             delBtn.addEventListener('click', () => deleteGrimpeur(name));
-            delBtn.addEventListener('touchend', (e) => { e.preventDefault(); deleteGrimpeur(name); });
         }
         el.appendChild(row);
     });
@@ -1766,7 +1749,10 @@ window.onload = () => {
     // Afficher le grimpeur actif dans le bouton
     const g = getActiveGrimpeur();
     const btn = document.getElementById('btnGrimpeur');
-    btn.textContent = g; // au démarrage c'est safe, le ::after CSS s'ajoute après
+    btn.textContent = g;
+
+    btn.addEventListener('click', () => openGrimpeurModal());
+
     renderBlocs();
 };
 
