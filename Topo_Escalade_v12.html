@@ -409,7 +409,48 @@
         .load-preview-thumb { width: 36px; height: 36px; border-radius: 4px; object-fit: cover; }
         .load-preview-info { font-size: 12px; }
 
-        /* Feedback visuel tap */
+        /* Bouton nom grimpeur actif dans panel-header */
+        .btn-grimpeur {
+            background: none; border: none;
+            font-size: 13px; font-weight: 700;
+            color: var(--blue); cursor: pointer;
+            padding: 0 4px; touch-action: manipulation;
+            display: flex; align-items: center; gap: 4px;
+        }
+        .btn-grimpeur::after { content: ' ▾'; font-size: 10px; }
+
+        /* Modal grimpeurs */
+        .grimpeur-list { margin-bottom: 10px; }
+        .grimpeur-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 10px;
+            background: var(--surface2); border: 1px solid var(--border);
+            border-radius: 8px; margin-bottom: 5px;
+            touch-action: manipulation;
+        }
+        .grimpeur-item.active { border-color: var(--blue); background: rgba(10,132,255,0.1); }
+        .grimpeur-item span { font-size: 13px; font-weight: 600; }
+        .grimpeur-sel { flex: 1; cursor: pointer; }
+        .btn-grimpeur-del {
+            background: none; border: none; color: var(--red);
+            font-size: 16px; padding: 4px 6px; cursor: pointer;
+            touch-action: manipulation;
+        }
+        .grimpeur-add-row {
+            display: flex; gap: 6px; margin-top: 6px;
+        }
+        .grimpeur-add-row input {
+            flex: 1;
+            background: var(--surface2); border: 1px solid var(--border);
+            color: var(--text); padding: 8px 10px; border-radius: 8px;
+            font-size: 13px; outline: none;
+        }
+        .grimpeur-add-row button {
+            background: var(--blue); border: none; color: #fff;
+            padding: 8px 14px; border-radius: 8px;
+            font-size: 13px; font-weight: 600; cursor: pointer;
+            touch-action: manipulation;
+        }
         .tap-flash {
             position: absolute;
             width: 30px; height: 30px;
@@ -473,7 +514,11 @@ if ('serviceWorker' in navigator) {
 
 <div class="panel" id="panel">
     <div class="panel-header">
-        <span class="panel-title">📖 Mon Carnet</span>
+        <span class="panel-title">
+            <button class="btn-grimpeur" id="btnGrimpeur"
+                ontouchend="openGrimpeurModal(); return false;"
+                onclick="openGrimpeurModal()">JB</button>
+        </span>
         <div class="carnet-btns">
             <label class="btn-carnet btn-carnet-load" for="uploadCarnet" ontouchend="this.click(); return false;" title="Charger carnet_blocs.json depuis l'appareil">📂 Charger</label>
             <input type="file" id="uploadCarnet" accept=".json,application/json" style="display:none" onchange="importCarnetLocal(this)">
@@ -515,6 +560,7 @@ if ('serviceWorker' in navigator) {
     <div class="modal">
         <h3 id="saveModalTitle">💾 Enregistrer le bloc</h3>
         <input type="text" id="blocName" placeholder="Nom du bloc">
+        <small id="blocNameNote" style="display:none;color:var(--text2);font-size:11px;margin:-4px 0 6px;display:block">Seul JB peut modifier le nom</small>
         <select id="blocLevel">
             <option value="4">4 - Jaune</option>
             <option value="5">5 - Bleu</option>
@@ -556,6 +602,20 @@ if ('serviceWorker' in navigator) {
     </div>
 </div>
 
+<!-- Modal grimpeurs -->
+<div class="modal-overlay" id="grimpeurModal">
+    <div class="modal">
+        <h3>🧗 Grimpeurs</h3>
+        <div class="grimpeur-list" id="grimpeurList"></div>
+        <div class="grimpeur-add-row">
+            <input type="text" id="newGrimpeurInput" placeholder="Nouveau grimpeur…" maxlength="20">
+            <button ontouchend="addGrimpeur(); return false;" onclick="addGrimpeur()">+ Ajouter</button>
+        </div>
+        <button class="btn-cancel" style="margin-top:10px"
+            ontouchend="closeGrimpeurModal(); return false;" onclick="closeGrimpeurModal()">Fermer</button>
+    </div>
+</div>
+
 <!-- Load Modal -->
 <div class="modal-overlay" id="loadModal">
     <div class="modal">
@@ -576,20 +636,99 @@ const canvas  = document.getElementById('canvas');
 const ctx     = canvas.getContext('2d');
 const vp      = document.getElementById('viewport');
 let img       = new Image();
-let holds     = []; // chargées via JSON
+let holds     = [];
 let pathData  = [];
 let imgDataURL = null;
 
 let scale = 1, offset = {x:0, y:0};
+let minScale = 0.1; // mis à jour après chargement image
 let lastDist = 0, lastFocus = {x:0,y:0}, lastTouchPos = {x:0,y:0};
 let pressTimer = null;
 let tapCount = 0, tapTimer = null;
 let firstTapPos = null;
-let activeFilters = new Set(); // multi-select
+let activeFilters = new Set();
 let loadSelectedId = null;
 let isLongPress = false;
 let touchStartPos = {x:0, y:0};
-let currentBlocId = null; // id du bloc actuellement chargé (null = nouveau)
+let currentBlocId = null;
+
+// ─── GRIMPEURS ─────────────────────────────────────────────────────────────
+const ADMIN = 'JB'; // seul ce grimpeur peut modifier le nom d'un bloc
+const DEFAULT_GRIMPEURS = ['JB', 'Emilien', 'Mat', 'Pascal', 'Guillaume'];
+
+function getGrimpeurs() {
+    try {
+        const g = JSON.parse(localStorage.getItem('grimpeurs'));
+        return Array.isArray(g) && g.length ? g : [...DEFAULT_GRIMPEURS];
+    } catch { return [...DEFAULT_GRIMPEURS]; }
+}
+function saveGrimpeurs(list) {
+    localStorage.setItem('grimpeurs', JSON.stringify(list));
+}
+function getActiveGrimpeur() {
+    return localStorage.getItem('activeGrimpeur') || ADMIN;
+}
+function setActiveGrimpeur(name) {
+    localStorage.setItem('activeGrimpeur', name);
+    document.getElementById('btnGrimpeur').textContent = name;
+    renderBlocs();
+}
+
+function openGrimpeurModal() {
+    renderGrimpeurList();
+    document.getElementById('grimpeurModal').classList.add('open');
+}
+function closeGrimpeurModal() {
+    document.getElementById('grimpeurModal').classList.remove('open');
+}
+function renderGrimpeurList() {
+    const list = getGrimpeurs();
+    const active = getActiveGrimpeur();
+    const el = document.getElementById('grimpeurList');
+    el.innerHTML = '';
+    list.forEach(name => {
+        const row = document.createElement('div');
+        row.className = 'grimpeur-item' + (name === active ? ' active' : '');
+        row.innerHTML = `
+            <span class="grimpeur-sel">${name}${name === active ? ' ✓' : ''}</span>
+            ${name !== ADMIN ? `<button class="btn-grimpeur-del" data-name="${name}">✕</button>` : ''}
+        `;
+        row.querySelector('.grimpeur-sel').addEventListener('click', () => {
+            setActiveGrimpeur(name);
+            closeGrimpeurModal();
+        });
+        row.querySelector('.grimpeur-sel').addEventListener('touchend', (e) => {
+            e.preventDefault();
+            setActiveGrimpeur(name);
+            closeGrimpeurModal();
+        });
+        const delBtn = row.querySelector('.btn-grimpeur-del');
+        if (delBtn) {
+            delBtn.addEventListener('click', () => deleteGrimpeur(name));
+            delBtn.addEventListener('touchend', (e) => { e.preventDefault(); deleteGrimpeur(name); });
+        }
+        el.appendChild(row);
+    });
+}
+function addGrimpeur() {
+    const input = document.getElementById('newGrimpeurInput');
+    const name = input.value.trim();
+    if (!name) return;
+    const list = getGrimpeurs();
+    if (list.includes(name)) { alert('Ce grimpeur existe déjà.'); return; }
+    list.push(name);
+    saveGrimpeurs(list);
+    input.value = '';
+    renderGrimpeurList();
+}
+function deleteGrimpeur(name) {
+    if (name === ADMIN) return;
+    if (!confirm(`Supprimer le grimpeur "${name}" ? Ses données personnelles seront perdues.`)) return;
+    const list = getGrimpeurs().filter(g => g !== name);
+    saveGrimpeurs(list);
+    if (getActiveGrimpeur() === name) setActiveGrimpeur(ADMIN);
+    renderGrimpeurList();
+}
 
 // ─── URL DE BASE GITHUB ────────────────────────────────────────────────────
 // Construire l'URL de base de façon robuste :
@@ -620,6 +759,7 @@ async function fetchFromGithub(type) {
                 img        = newImg;
                 imgDataURL = newImg.src;
                 scale      = vp.clientWidth / newImg.naturalWidth;
+                minScale   = scale; // ne pas dézoomer en dessous de l'image plein écran
                 offset     = { x: 0, y: 0 };
                 canvas.width  = newImg.naturalWidth;
                 canvas.height = newImg.naturalHeight;
@@ -894,9 +1034,11 @@ vp.addEventListener('touchmove', (e) => {
             y: (e.touches[0].clientY + e.touches[1].clientY) / 2
         };
         const zf = dist / lastDist;
-        offset.x = focus.x - (focus.x - offset.x) * zf + (focus.x - lastFocus.x);
-        offset.y = focus.y - (focus.y - offset.y) * zf + (focus.y - lastFocus.y);
-        scale *= zf;
+        const newScale = Math.max(minScale, scale * zf);
+        const actualZf = newScale / scale;
+        offset.x = focus.x - (focus.x - offset.x) * actualZf + (focus.x - lastFocus.x);
+        offset.y = focus.y - (focus.y - offset.y) * actualZf + (focus.y - lastFocus.y);
+        scale = newScale;
         lastDist = dist; lastFocus = focus;
         updateTransform();
         return;
@@ -990,33 +1132,41 @@ function resetAll() {
 
 // ─── ÉTOILES ───────────────────────────────────────────────────────────────
 let _stars = 0;
-
 function setStars(n) {
     _stars = n;
-    for (let i = 1; i <= 3; i++) {
+    for (let i = 1; i <= 3; i++)
         document.getElementById('starBtn' + i).textContent = i <= n ? '★' : '☆';
-    }
-    // Remettre le bouton 0 (aucune étoile) toujours à ☆
     document.getElementById('starBtn0').textContent = n === 0 ? '✕' : '☆';
 }
-
 function renderStars(n) {
     if (!n || n <= 0) return '';
     return '★'.repeat(n) + '☆'.repeat(3 - n);
 }
 
-// ─── SAUVEGARDE ────────────────────────────────────────────────────────────
+// ─── SAUVEGARDE MULTI-GRIMPEURS ─────────────────────────────────────────────
+// Structure :
+//   bloc.nom, .prises, .holds, .thumb, .date  → partagés (JB est propriétaire du nom)
+//   bloc.perso[grimpeur] = { statut, niveau, commentaire, stars } → par grimpeur
 let _saveModalMode = 'new';
+
+function getPerso(bloc, grimpeur) {
+    return (bloc.perso && bloc.perso[grimpeur]) || {};
+}
 
 function openSaveModal() {
     if (pathData.length === 0) { alert('Sélectionnez au moins une prise avant d\'enregistrer.'); return; }
     if (!imgDataURL) { alert('Chargez une photo d\'abord.'); return; }
+    const g = getActiveGrimpeur();
     _saveModalMode = 'new';
     document.getElementById('saveModalTitle').textContent = '💾 Enregistrer le bloc';
     document.getElementById('saveModalConfirmBtn').textContent = 'Confirmer l\'enregistrement';
     document.getElementById('saveModalConfirmBtn').style.background = 'var(--green)';
     document.getElementById('btnModalDelete').style.display = 'none';
-    document.getElementById('blocName').value = '';
+    // Nom : éditable seulement par JB
+    const nameEl = document.getElementById('blocName');
+    nameEl.value = '';
+    nameEl.disabled = (g !== ADMIN);
+    document.getElementById('blocNameNote').style.display = (g !== ADMIN) ? 'block' : 'none';
     document.getElementById('blocLevel').value = '6A';
     document.getElementById('blocStatus').value = 'Projet';
     document.getElementById('blocComment').value = '';
@@ -1030,54 +1180,66 @@ function openUpdateModal() {
     const blocs = getBlocs();
     const bloc = blocs.find(b => b.id === currentBlocId);
     if (!bloc) { alert('Bloc introuvable dans le carnet.'); return; }
+    const g = getActiveGrimpeur();
+    const perso = getPerso(bloc, g);
     _saveModalMode = 'update';
     document.getElementById('saveModalTitle').textContent = '✏️ Modifier le bloc';
     document.getElementById('saveModalConfirmBtn').textContent = 'Enregistrer les modifications';
     document.getElementById('saveModalConfirmBtn').style.background = 'var(--orange)';
     document.getElementById('btnModalDelete').style.display = '';
-    document.getElementById('blocName').value = bloc.nom;
-    document.getElementById('blocLevel').value = bloc.niveau;
-    document.getElementById('blocStatus').value = bloc.statut;
-    document.getElementById('blocComment').value = bloc.commentaire || '';
-    setStars(bloc.stars || 0);
+    // Nom : éditable seulement par JB
+    const nameEl = document.getElementById('blocName');
+    nameEl.value = bloc.nom;
+    nameEl.disabled = (g !== ADMIN);
+    document.getElementById('blocNameNote').style.display = (g !== ADMIN) ? 'block' : 'none';
+    // Données perso du grimpeur actif (ou données partagées par défaut)
+    document.getElementById('blocLevel').value   = perso.niveau   || bloc.niveau   || '6A';
+    document.getElementById('blocStatus').value  = perso.statut   || bloc.statut   || 'Projet';
+    document.getElementById('blocComment').value = perso.commentaire !== undefined ? perso.commentaire : (bloc.commentaire || '');
+    setStars(perso.stars !== undefined ? perso.stars : (bloc.stars || 0));
     document.getElementById('saveModal').classList.add('open');
 }
 
 function closeSaveModal() {
     document.getElementById('saveModal').classList.remove('open');
 }
-
 function saveModalConfirm() {
     if (_saveModalMode === 'update') updateBlocData();
     else saveBlocData();
 }
 
-// Formate une date en jj/mm/aaaa depuis un timestamp ou ISO string
 function fmtDate(d) {
     if (!d) return '';
     const dt = new Date(d);
-    if (isNaN(dt)) return String(d).split(' ')[0]; // fallback : garder tel quel
+    if (isNaN(dt)) return String(d).split(' ')[0];
     return dt.toLocaleDateString('fr-FR');
 }
 
 function saveBlocData() {
     const thumb = generateThumb();
-    const now = Date.now();
+    const now   = Date.now();
+    const g     = getActiveGrimpeur();
+    const nom   = (g === ADMIN)
+        ? (document.getElementById('blocName').value || 'Bloc sans titre')
+        : 'Bloc sans titre';
     const bloc = {
         id: now,
-        nom: document.getElementById('blocName').value || 'Bloc sans titre',
-        niveau: document.getElementById('blocLevel').value,
-        statut: document.getElementById('blocStatus').value,
-        commentaire: document.getElementById('blocComment').value,
-        stars: _stars,
+        nom,
         prises: JSON.parse(JSON.stringify(pathData)),
-        holds: JSON.parse(JSON.stringify(holds)),
+        holds:  JSON.parse(JSON.stringify(holds)),
         thumb,
-        date: now, // timestamp ms — fiable pour le tri
+        date: now,
+        perso: {
+            [g]: {
+                niveau:      document.getElementById('blocLevel').value,
+                statut:      document.getElementById('blocStatus').value,
+                commentaire: document.getElementById('blocComment').value,
+                stars:       _stars,
+            }
+        }
     };
     let saved = getBlocs();
     saved.push(bloc);
-    // Toujours trier par date décroissante
     saved.sort((a, b) => (b.date || 0) - (a.date || 0));
     localStorage.setItem('escaladeBlocs', JSON.stringify(saved));
     currentBlocId = bloc.id;
@@ -1092,23 +1254,26 @@ function saveBlocData() {
 function updateBlocData() {
     if (!currentBlocId) return;
     const thumb = generateThumb();
-    let saved = getBlocs();
-    const idx = saved.findIndex(b => b.id === currentBlocId);
+    const g     = getActiveGrimpeur();
+    let saved   = getBlocs();
+    const idx   = saved.findIndex(b => b.id === currentBlocId);
     if (idx === -1) { alert('Bloc introuvable.'); closeSaveModal(); return; }
-    // Conserver date d'origine — pas de dateModif
-    saved[idx] = {
-        ...saved[idx],
-        nom: document.getElementById('blocName').value || saved[idx].nom,
-        niveau: document.getElementById('blocLevel').value,
-        statut: document.getElementById('blocStatus').value,
+    const bloc  = saved[idx];
+    // Mise à jour : nom seulement par JB
+    if (g === ADMIN) {
+        bloc.nom = document.getElementById('blocName').value || bloc.nom;
+    }
+    bloc.thumb  = thumb;
+    bloc.prises = JSON.parse(JSON.stringify(pathData));
+    bloc.holds  = JSON.parse(JSON.stringify(holds));
+    // Données perso du grimpeur actif
+    if (!bloc.perso) bloc.perso = {};
+    bloc.perso[g] = {
+        niveau:      document.getElementById('blocLevel').value,
+        statut:      document.getElementById('blocStatus').value,
         commentaire: document.getElementById('blocComment').value,
-        stars: _stars,
-        prises: JSON.parse(JSON.stringify(pathData)),
-        holds: JSON.parse(JSON.stringify(holds)),
-        thumb,
-        // date inchangée intentionnellement
+        stars:       _stars,
     };
-    // Re-trier
     saved.sort((a, b) => (b.date || 0) - (a.date || 0));
     localStorage.setItem('escaladeBlocs', JSON.stringify(saved));
     closeSaveModal();
@@ -1237,20 +1402,42 @@ function resetFilters(e) {
 }
 
 function renderBlocs() {
-    let all = getBlocs();
-    // Toujours trier par date décroissante (timestamp ou fallback)
+    const g   = getActiveGrimpeur();
+    let all   = getBlocs();
     all.sort((a, b) => (b.date || 0) - (a.date || 0));
+
+    // Calcul cotation moyenne et étoiles moyennes sur tous les grimpeurs ayant renseigné
+    function avgNiveau(bloc) {
+        if (!bloc.perso) return null;
+        const niveaux = Object.values(bloc.perso).map(p => p.niveau).filter(Boolean);
+        if (!niveaux.length) return null;
+        const NIVEAUX = ['4','5','6A','6A+','6B','6B+','6C','6C+',
+                         '7A','7A+','7B','7B+','7C','7C+','8A','8A+','8B','8B+'];
+        const indices = niveaux.map(n => NIVEAUX.indexOf(n)).filter(i => i >= 0);
+        if (!indices.length) return null;
+        return NIVEAUX[Math.round(indices.reduce((a,b) => a+b, 0) / indices.length)];
+    }
+    function avgStars(bloc) {
+        if (!bloc.perso) return 0;
+        const vals = Object.values(bloc.perso).map(p => p.stars || 0).filter(v => v > 0);
+        if (!vals.length) return 0;
+        return Math.round(vals.reduce((a,b) => a+b, 0) / vals.length);
+    }
 
     let filtered;
     if (activeFilters.size === 0) {
         filtered = all;
     } else {
         filtered = all.filter(b => {
+            const perso = getPerso(b, g);
+            const niv = perso.niveau || b.niveau || '';
+            const stat = perso.statut || b.statut || '';
+            const st = avgStars(b);
             for (const f of activeFilters) {
-                if (f === 's1' && (b.stars || 0) === 1) return true;
-                if (f === 's2' && (b.stars || 0) === 2) return true;
-                if (f === 's3' && (b.stars || 0) === 3) return true;
-                if (b.niveau === f || b.statut === f) return true;
+                if (f === 's1' && st === 1) return true;
+                if (f === 's2' && st === 2) return true;
+                if (f === 's3' && st === 3) return true;
+                if (niv === f || stat === f) return true;
             }
             return false;
         });
@@ -1258,7 +1445,6 @@ function renderBlocs() {
 
     document.getElementById('blocCount').textContent = `${all.length} bloc(s)`;
     const wrapper = document.getElementById('itemsWrapper');
-
     if (filtered.length === 0) {
         wrapper.innerHTML = '<div class="empty-msg">Aucun bloc enregistré.</div>';
         return;
@@ -1266,10 +1452,26 @@ function renderBlocs() {
 
     wrapper.innerHTML = '';
     filtered.forEach(bloc => {
-        const levelClass = getLevelClass(bloc.niveau);
-        const statutClass = bloc.statut === 'Réalisé' ? 'statut-realise' : 'statut-projet';
-        const dateStr   = fmtDate(bloc.date);
-        const starsStr  = renderStars(bloc.stars || 0);
+        const perso = getPerso(bloc, g);
+        // Données affichées : perso du grimpeur actif, sinon données de base
+        const niv    = perso.niveau   || bloc.niveau   || '?';
+        const stat   = perso.statut   || bloc.statut   || 'Projet';
+        const comm   = (perso.commentaire !== undefined && perso.commentaire !== '')
+                        ? perso.commentaire
+                        : (bloc.commentaire || '');
+        // Moyennes
+        const avgNiv  = avgNiveau(bloc);
+        const avgSt   = avgStars(bloc);
+        const levelClass  = getLevelClass(avgNiv || niv);
+        const statutClass = stat === 'Réalisé' ? 'statut-realise' : 'statut-projet';
+        const dateStr     = fmtDate(bloc.date);
+        const starsStr    = renderStars(avgSt);
+
+        // Combien de grimpeurs ont un perso
+        const nbGrimpeurs = bloc.perso ? Object.keys(bloc.perso).length : 0;
+        const grimpeurBadge = nbGrimpeurs > 1
+            ? `<span style="font-size:9px;color:var(--text2);flex-shrink:0">${nbGrimpeurs}🧗</span>`
+            : '';
 
         const div = document.createElement('div');
         div.className = 'bloc-item' + (bloc.id === currentBlocId ? ' selected' : '');
@@ -1279,18 +1481,16 @@ function renderBlocs() {
             </div>
             <div class="bloc-info">
                 <div class="bloc-name">${bloc.nom}</div>
-                <div class="bloc-meta">${dateStr}${bloc.commentaire ? ' · ' + bloc.commentaire.slice(0, 38) : ''}</div>
+                <div class="bloc-meta">${dateStr}${comm ? ' · ' + comm.slice(0, 35) : ''}</div>
             </div>
             ${starsStr ? `<span class="bloc-stars">${starsStr}</span>` : ''}
-            <span class="bloc-level ${levelClass}">${bloc.niveau}</span>
+            ${grimpeurBadge}
+            <span class="bloc-level ${levelClass}">${avgNiv || niv}</span>
             <div class="statut-dot ${statutClass}"></div>
         `;
 
-        // Double tap / dblclick pour charger le bloc
         let blocTapCount = 0, blocTapTimer = null;
-        function triggerBlocLoad() {
-            loadBloc(bloc);
-        }
+        function triggerBlocLoad() { loadBloc(bloc); }
         div.addEventListener('touchend', (ev) => {
             ev.preventDefault();
             blocTapCount++;
@@ -1301,7 +1501,6 @@ function renderBlocs() {
             }, 300);
         });
         div.addEventListener('dblclick', () => triggerBlocLoad());
-
         wrapper.appendChild(div);
     });
 }
@@ -1384,7 +1583,11 @@ function loadBloc(bloc) {
 })();
 
 // ─── INIT ───────────────────────────────────────────────────────────────────
-window.onload = renderBlocs;
+window.onload = () => {
+    // Afficher le grimpeur actif dans le bouton
+    document.getElementById('btnGrimpeur').textContent = getActiveGrimpeur();
+    renderBlocs();
+};
 
 </script>
 </body>
