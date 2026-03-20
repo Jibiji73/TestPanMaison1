@@ -873,11 +873,14 @@ async function fetchFromGithub(type) {
             const resp = await fetch(base + 'carnet_blocs.json?t=' + t, { cache: 'no-store' });
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
             const raw  = await resp.json();
-            let blocs  = null;
+
+            // Blocs
+            let blocs = null;
             if      (Array.isArray(raw))                  blocs = raw;
             else if (Array.isArray(raw.carnet_blocs))     blocs = raw.carnet_blocs;
             else if (Array.isArray(raw.blocs))            blocs = raw.blocs;
             if (!blocs || blocs.length === 0) throw new Error('Aucun bloc trouvé dans le fichier.');
+
             const existing = getBlocs();
             if (existing.length > 0) {
                 const merge = confirm(`Le carnet local contient ${existing.length} bloc(s).\nOK = fusionner | Annuler = remplacer`);
@@ -887,6 +890,16 @@ async function fetchFromGithub(type) {
                 }
             }
             store.setItem('escaladeBlocs', JSON.stringify(blocs));
+
+            // Grimpeurs (si présents dans le fichier)
+            if (Array.isArray(raw.grimpeurs) && raw.grimpeurs.length > 0) {
+                const localG = getGrimpeurs();
+                const merged = [...new Set([...raw.grimpeurs, ...localG])];
+                saveGrimpeurs(merged);
+                const btn = document.getElementById('btnGrimpeur');
+                if (btn) btn.textContent = getActiveGrimpeur();
+            }
+
             renderBlocs();
         } catch(e) {
             alert('Impossible de charger carnet_blocs.json.\n' + e.message);
@@ -1414,7 +1427,12 @@ function getBlocs() {
 function exportCarnetLocal() {
     const blocs = getBlocs();
     if (blocs.length === 0) { alert('Le carnet est vide.'); return; }
-    const json = JSON.stringify({ carnet_blocs: blocs, exportDate: new Date().toISOString() }, null, 2);
+    const data = {
+        carnet_blocs: blocs,
+        grimpeurs:    getGrimpeurs(),
+        exportDate:   new Date().toISOString()
+    };
+    const json = JSON.stringify(data, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -1433,6 +1451,7 @@ function importCarnetLocal(input) {
         try { raw = JSON.parse(e.target.result); }
         catch(err) { alert('Fichier JSON invalide :\n' + err.message); return; }
 
+        // ── Blocs ──
         let blocs = null;
         if      (Array.isArray(raw))                  blocs = raw;
         else if (Array.isArray(raw.carnet_blocs))     blocs = raw.carnet_blocs;
@@ -1455,8 +1474,20 @@ function importCarnetLocal(input) {
             }
         }
         store.setItem('escaladeBlocs', JSON.stringify(blocs));
+
+        // ── Grimpeurs (si présents dans le fichier) ──
+        if (Array.isArray(raw.grimpeurs) && raw.grimpeurs.length > 0) {
+            // Fusionner avec les grimpeurs locaux existants (sans doublons)
+            const localG  = getGrimpeurs();
+            const merged  = [...new Set([...raw.grimpeurs, ...localG])];
+            saveGrimpeurs(merged);
+            // Mettre à jour l'affichage du bouton grimpeur actif
+            const btn = document.getElementById('btnGrimpeur');
+            if (btn) btn.textContent = getActiveGrimpeur();
+        }
+
         renderBlocs();
-        input.value = ''; // permet de recharger le même fichier
+        input.value = '';
     };
     reader.readAsText(input.files[0]);
 }
