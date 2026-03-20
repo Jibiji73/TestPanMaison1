@@ -451,6 +451,42 @@
             font-size: 13px; font-weight: 600; cursor: pointer;
             touch-action: manipulation;
         }
+        /* Modal détail grimpeurs d'un bloc */
+        .detail-header {
+            display: flex; align-items: center; gap: 10px;
+            margin-bottom: 14px;
+        }
+        .detail-thumb {
+            width: 48px; height: 60px; border-radius: 6px;
+            background: #fff; overflow: hidden; flex-shrink: 0;
+        }
+        .detail-thumb img { width: 100%; height: 100%; object-fit: cover; }
+        .detail-title { font-size: 15px; font-weight: 700; }
+        .detail-subtitle { font-size: 11px; color: var(--text2); margin-top: 2px; }
+        .grimpeur-detail-row {
+            display: flex; align-items: flex-start;
+            padding: 8px 10px;
+            background: var(--surface2); border: 1px solid var(--border);
+            border-radius: 8px; margin-bottom: 6px; gap: 8px;
+        }
+        .gdr-name {
+            font-size: 12px; font-weight: 700;
+            min-width: 64px; color: var(--blue); flex-shrink: 0;
+        }
+        .gdr-body { flex: 1; min-width: 0; }
+        .gdr-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .gdr-niveau {
+            font-size: 11px; font-weight: 800;
+            padding: 1px 6px; border-radius: 4px; flex-shrink: 0;
+        }
+        .gdr-stars { font-size: 11px; color: var(--yellow); letter-spacing: 1px; }
+        .gdr-statut { font-size: 10px; color: var(--text2); }
+        .gdr-comment {
+            font-size: 11px; color: var(--text2);
+            margin-top: 3px; line-height: 1.4;
+        }
+        .detail-empty { color: var(--text2); font-size: 12px; text-align: center; padding: 12px 0; }
+
         .tap-flash {
             position: absolute;
             width: 30px; height: 30px;
@@ -613,6 +649,23 @@ if ('serviceWorker' in navigator) {
         </div>
         <button class="btn-cancel" style="margin-top:10px"
             ontouchend="closeGrimpeurModal(); return false;" onclick="closeGrimpeurModal()">Fermer</button>
+    </div>
+</div>
+
+<!-- Modal détail grimpeurs d'un bloc (appui long) -->
+<div class="modal-overlay" id="detailModal">
+    <div class="modal" style="max-height:80vh;overflow-y:auto;">
+        <div class="detail-header">
+            <div class="detail-thumb" id="detailThumb"></div>
+            <div>
+                <div class="detail-title" id="detailNom"></div>
+                <div class="detail-subtitle" id="detailSub"></div>
+            </div>
+        </div>
+        <div id="detailList"></div>
+        <button class="btn-cancel" style="margin-top:4px"
+            ontouchend="document.getElementById('detailModal').classList.remove('open');return false;"
+            onclick="document.getElementById('detailModal').classList.remove('open')">Fermer</button>
     </div>
 </div>
 
@@ -1490,8 +1543,30 @@ function renderBlocs() {
         `;
 
         let blocTapCount = 0, blocTapTimer = null;
+        let blocPressTimer = null, blocMoved = false, blocStartPos = {x:0,y:0};
+
         function triggerBlocLoad() { loadBloc(bloc); }
+
+        div.addEventListener('touchstart', (ev) => {
+            blocMoved = false;
+            blocStartPos = { x: ev.touches[0].clientX, y: ev.touches[0].clientY };
+            blocPressTimer = setTimeout(() => {
+                if (!blocMoved) openDetailModal(bloc);
+            }, 600);
+        }, { passive: true });
+
+        div.addEventListener('touchmove', (ev) => {
+            const dx = ev.touches[0].clientX - blocStartPos.x;
+            const dy = ev.touches[0].clientY - blocStartPos.y;
+            if (Math.hypot(dx, dy) > 8) {
+                blocMoved = true;
+                clearTimeout(blocPressTimer);
+            }
+        }, { passive: true });
+
         div.addEventListener('touchend', (ev) => {
+            clearTimeout(blocPressTimer);
+            if (blocMoved) return;
             ev.preventDefault();
             blocTapCount++;
             clearTimeout(blocTapTimer);
@@ -1500,12 +1575,74 @@ function renderBlocs() {
                 blocTapCount = 0;
             }, 300);
         });
+
         div.addEventListener('dblclick', () => triggerBlocLoad());
         wrapper.appendChild(div);
     });
 }
 
-function getLevelClass(n) {
+// ─── DÉTAIL GRIMPEURS D'UN BLOC (appui long) ──────────────────────────────
+function openDetailModal(bloc) {
+    const NIVEAUX = ['4','5','6A','6A+','6B','6B+','6C','6C+',
+                     '7A','7A+','7B','7B+','7C','7C+','8A','8A+','8B','8B+'];
+
+    // En-tête
+    const thumbEl = document.getElementById('detailThumb');
+    thumbEl.innerHTML = bloc.thumb ? `<img src="${bloc.thumb}" alt="">` : '🧗';
+    document.getElementById('detailNom').textContent = bloc.nom;
+
+    // Sous-titre : date + nb réussi
+    const nbReal = bloc.perso
+        ? Object.values(bloc.perso).filter(p => p.statut === 'Réalisé').length : 0;
+    const nbTotal = bloc.perso ? Object.keys(bloc.perso).length : 0;
+    document.getElementById('detailSub').textContent =
+        `${fmtDate(bloc.date)} · ${nbReal} réussi(s) sur ${nbTotal} grimpeur(s)`;
+
+    // Liste des grimpeurs
+    const list = document.getElementById('detailList');
+    list.innerHTML = '';
+
+    if (!bloc.perso || Object.keys(bloc.perso).length === 0) {
+        list.innerHTML = '<div class="detail-empty">Aucune donnée grimpeur.</div>';
+    } else {
+        // Trier : réalisés en premier, puis par nom
+        const entries = Object.entries(bloc.perso).sort((a, b) => {
+            const ra = a[1].statut === 'Réalisé' ? 0 : 1;
+            const rb = b[1].statut === 'Réalisé' ? 0 : 1;
+            return ra - rb || a[0].localeCompare(b[0]);
+        });
+
+        entries.forEach(([grimpeur, p]) => {
+            const row = document.createElement('div');
+            row.className = 'grimpeur-detail-row';
+
+            const niv = p.niveau || '';
+            const stars = p.stars || 0;
+            const statut = p.statut || 'Projet';
+            const comment = p.commentaire || '';
+            const levelClass = niv ? getLevelClass(niv) : '';
+            const starsHtml = stars > 0
+                ? `<span class="gdr-stars">${'★'.repeat(stars)}${'☆'.repeat(3-stars)}</span>`
+                : '';
+            const statutEmoji = statut === 'Réalisé' ? '✅' : '🔴';
+
+            row.innerHTML = `
+                <div class="gdr-name">${grimpeur}</div>
+                <div class="gdr-body">
+                    <div class="gdr-meta">
+                        ${niv ? `<span class="gdr-niveau ${levelClass}">${niv}</span>` : ''}
+                        ${starsHtml}
+                        <span class="gdr-statut">${statutEmoji} ${statut}</span>
+                    </div>
+                    ${comment ? `<div class="gdr-comment">${comment}</div>` : ''}
+                </div>
+            `;
+            list.appendChild(row);
+        });
+    }
+
+    document.getElementById('detailModal').classList.add('open');
+}
     if (n === '4') return 'level-jaune';
     if (n === '5') return 'level-bleu';
     if (['6A','6A+','6B','6B+','6C','6C+'].includes(n)) return 'level-vert';
