@@ -593,7 +593,6 @@ if ('serviceWorker' in navigator) {
         <button class="filter-btn" data-filter="s1" onclick="toggleFilter(this, event)">★</button>
         <button class="filter-btn" data-filter="s2" onclick="toggleFilter(this, event)">★★</button>
         <button class="filter-btn" data-filter="s3" onclick="toggleFilter(this, event)">★★★</button>
-        <!-- Les filtres ouvreurs sont injectés dynamiquement par renderCreateurFilters() -->
         <span id="creatorFilters"></span>
     </div>
     <div class="blocs-list" id="itemsWrapper"></div>
@@ -604,7 +603,7 @@ if ('serviceWorker' in navigator) {
     <div class="modal">
         <h3 id="saveModalTitle">💾 Enregistrer le bloc</h3>
         <input type="text" id="blocName" placeholder="Nom du bloc">
-        <small id="blocNameNote" style="display:none;color:var(--text2);font-size:11px;margin:-4px 0 6px;display:block">Nom modifiable uniquement par le créateur</small>
+        <small id="blocNameNote" style="display:none;color:var(--text2);font-size:11px;margin:-4px 0 6px;display:block">Seul JB peut modifier le nom</small>
         <select id="blocLevel">
             <option value="4">4 - Jaune</option>
             <option value="5">5 - Bleu</option>
@@ -1244,8 +1243,7 @@ function renderStars(n) {
 
 // ─── SAUVEGARDE MULTI-GRIMPEURS ─────────────────────────────────────────────
 // Structure :
-//   bloc.nom, .prises, .holds, .thumb, .date, .createur → partagés
-//   bloc.createur → ouvreur du bloc, fixé à la création, seul autorisé à modifier le nom
+//   bloc.nom, .prises, .holds, .thumb, .date  → partagés (JB est propriétaire du nom)
 //   bloc.perso[grimpeur] = { statut, niveau, commentaire, stars } → par grimpeur
 let _saveModalMode = 'new';
 
@@ -1261,7 +1259,6 @@ function openSaveModal() {
     document.getElementById('saveModalConfirmBtn').textContent = 'Confirmer l\'enregistrement';
     document.getElementById('saveModalConfirmBtn').style.background = 'var(--green)';
     document.getElementById('btnModalDelete').style.display = 'none';
-    // À la création, le grimpeur actif est le créateur → il peut nommer le bloc
     const nameEl = document.getElementById('blocName');
     nameEl.value = '';
     nameEl.disabled = false;
@@ -1279,22 +1276,19 @@ function openUpdateModal() {
     const blocs = getBlocs();
     const bloc = blocs.find(b => b.id === currentBlocId);
     if (!bloc) { alert('Bloc introuvable dans le carnet.'); return; }
-    const g        = getActiveGrimpeur();
-    const createur = bloc.createur || ADMIN;
-    const perso    = getPerso(bloc, g);
+    const g = getActiveGrimpeur();
+    const perso = getPerso(bloc, g);
     _saveModalMode = 'update';
     document.getElementById('saveModalTitle').textContent = '✏️ Modifier le bloc';
     document.getElementById('saveModalConfirmBtn').textContent = 'Enregistrer les modifications';
     document.getElementById('saveModalConfirmBtn').style.background = 'var(--orange)';
     document.getElementById('btnModalDelete').style.display = '';
-    // Nom : éditable uniquement par le créateur du bloc
+    // Nom : éditable par tous
     const nameEl = document.getElementById('blocName');
-    nameEl.value    = bloc.nom;
-    nameEl.disabled = (g !== createur);
-    const note = document.getElementById('blocNameNote');
-    note.textContent = `Nom modifiable uniquement par ${createur}`;
-    note.style.display = (g !== createur) ? 'block' : 'none';
-    // Données perso du grimpeur actif
+    nameEl.value = bloc.nom;
+    nameEl.disabled = false;
+    document.getElementById('blocNameNote').style.display = 'none';
+    // Données perso du grimpeur actif (ou données partagées par défaut)
     document.getElementById('blocLevel').value   = perso.niveau   || bloc.niveau   || '6A';
     document.getElementById('blocStatus').value  = perso.statut   || bloc.statut   || 'Projet';
     document.getElementById('blocComment').value = perso.commentaire !== undefined ? perso.commentaire : (bloc.commentaire || '');
@@ -1321,15 +1315,14 @@ function saveBlocData() {
     const thumb = generateThumb();
     const now   = Date.now();
     const g     = getActiveGrimpeur();
-    const nom   = document.getElementById('blocName').value.trim() || 'Bloc sans titre';
     const bloc = {
-        id:      now,
-        nom,
-        createur: g,          // ← ouvreur enregistré à la création, immuable
-        prises:  JSON.parse(JSON.stringify(pathData)),
-        holds:   JSON.parse(JSON.stringify(holds)),
+        id:       now,
+        nom:      document.getElementById('blocName').value.trim() || 'Bloc sans titre',
+        createur: g,          // ouvreur enregistré une fois pour toutes
+        prises:   JSON.parse(JSON.stringify(pathData)),
+        holds:    JSON.parse(JSON.stringify(holds)),
         thumb,
-        date:    now,
+        date:     now,
         perso: {
             [g]: {
                 niveau:      document.getElementById('blocLevel').value,
@@ -1360,11 +1353,8 @@ function updateBlocData() {
     const idx   = saved.findIndex(b => b.id === currentBlocId);
     if (idx === -1) { alert('Bloc introuvable.'); closeSaveModal(); return; }
     const bloc  = saved[idx];
-    // Nom modifiable uniquement par le créateur du bloc
-    const createur = bloc.createur || ADMIN;
-    if (g === createur) {
-        bloc.nom = document.getElementById('blocName').value.trim() || bloc.nom;
-    }
+    // Nom modifiable par tous — le champ createur n'est jamais écrasé
+    bloc.nom = document.getElementById('blocName').value.trim() || bloc.nom;
     bloc.thumb  = thumb;
     bloc.prises = JSON.parse(JSON.stringify(pathData));
     bloc.holds  = JSON.parse(JSON.stringify(holds));
@@ -1500,17 +1490,16 @@ function importCarnetLocal(input) {
     reader.readAsText(input.files[0]);
 }
 
-// ─── FILTRES OUVREURS (générés dynamiquement) ──────────────────────────────
+// ─── FILTRES OUVREURS (dynamiques) ────────────────────────────────────────
 function renderCreateurFilters() {
-    const blocs = getBlocs();
-    const createurs = [...new Set(blocs.map(b => b.createur).filter(Boolean))].sort();
+    const createurs = [...new Set(getBlocs().map(b => b.createur).filter(Boolean))].sort();
     const container = document.getElementById('creatorFilters');
     if (!container) return;
     container.innerHTML = '';
     createurs.forEach(name => {
         const btn = document.createElement('button');
         btn.className = 'filter-btn' + (activeFilters.has('c:' + name) ? ' active' : '');
-        btn.dataset.filter = 'c:' + name; // préfixe 'c:' pour distinguer des autres filtres
+        btn.dataset.filter = 'c:' + name;
         btn.textContent = '🧗 ' + name;
         btn.onclick = (e) => toggleFilter(btn, e);
         container.appendChild(btn);
@@ -1543,7 +1532,6 @@ function renderBlocs() {
     let all   = getBlocs();
     all.sort((a, b) => (b.date || 0) - (a.date || 0));
 
-    // Mettre à jour les filtres ouvreurs dynamiques
     renderCreateurFilters();
 
     // Calcul cotation moyenne et étoiles moyennes sur tous les grimpeurs ayant renseigné
@@ -1594,19 +1582,18 @@ function renderBlocs() {
     wrapper.innerHTML = '';
     filtered.forEach(bloc => {
         const perso = getPerso(bloc, g);
-        // Données affichées : perso du grimpeur actif, sinon données de base
         const niv    = perso.niveau   || bloc.niveau   || '?';
         const stat   = perso.statut   || bloc.statut   || 'Projet';
         const comm   = (perso.commentaire !== undefined && perso.commentaire !== '')
                         ? perso.commentaire
                         : (bloc.commentaire || '');
-        // Moyennes
         const avgNiv  = avgNiveau(bloc);
         const avgSt   = avgStars(bloc);
         const levelClass  = getLevelClass(avgNiv || niv);
         const statutClass = stat === 'Réalisé' ? 'statut-realise' : 'statut-projet';
         const dateStr     = fmtDate(bloc.date);
         const starsStr    = renderStars(avgSt);
+        const createur    = bloc.createur || '';
 
         // Combien de grimpeurs ont un perso
         const nbGrimpeurs = bloc.perso ? Object.keys(bloc.perso).length : 0;
@@ -1622,7 +1609,7 @@ function renderBlocs() {
             </div>
             <div class="bloc-info">
                 <div class="bloc-name">${bloc.nom}</div>
-                <div class="bloc-meta">${dateStr}${comm ? ' · ' + comm.slice(0, 35) : ''}</div>
+                <div class="bloc-meta">${createur ? '🧗 ' + createur + (dateStr ? ' · ' + dateStr : '') : dateStr}${comm ? ' · ' + comm.slice(0, 30) : ''}</div>
             </div>
             ${starsStr ? `<span class="bloc-stars">${starsStr}</span>` : ''}
             ${grimpeurBadge}
