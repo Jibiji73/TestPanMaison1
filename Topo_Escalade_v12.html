@@ -557,7 +557,7 @@ if ('serviceWorker' in navigator) {
     <div class="panel-header">
         <span class="panel-title">
             <button class="btn-grimpeur" id="btnGrimpeur"
-                ontouchend="openGrimpeurModal(); return false;"
+                ontouchend="event.preventDefault(); openGrimpeurModal();"
                 onclick="openGrimpeurModal()">JB</button>
         </span>
         <div class="carnet-btns">
@@ -728,15 +728,21 @@ function getActiveGrimpeur() {
 }
 function setActiveGrimpeur(name) {
     localStorage.setItem('activeGrimpeur', name);
-    document.getElementById('btnGrimpeur').textContent = name;
+    // Mettre à jour le libellé du bouton sans toucher au pseudo-élément CSS ▾
+    const btn = document.getElementById('btnGrimpeur');
+    btn.firstChild ? btn.firstChild.textContent = name : btn.textContent = name;
     renderBlocs();
 }
 
+let _grimpeurModalOpen = false;
 function openGrimpeurModal() {
+    if (_grimpeurModalOpen) return;
+    _grimpeurModalOpen = true;
     renderGrimpeurList();
     document.getElementById('grimpeurModal').classList.add('open');
 }
 function closeGrimpeurModal() {
+    _grimpeurModalOpen = false;
     document.getElementById('grimpeurModal').classList.remove('open');
 }
 function renderGrimpeurList() {
@@ -757,6 +763,7 @@ function renderGrimpeurList() {
         });
         row.querySelector('.grimpeur-sel').addEventListener('touchend', (e) => {
             e.preventDefault();
+            e.stopPropagation();
             setActiveGrimpeur(name);
             closeGrimpeurModal();
         });
@@ -1724,7 +1731,9 @@ function loadBloc(bloc) {
 // ─── INIT ───────────────────────────────────────────────────────────────────
 window.onload = () => {
     // Afficher le grimpeur actif dans le bouton
-    document.getElementById('btnGrimpeur').textContent = getActiveGrimpeur();
+    const g = getActiveGrimpeur();
+    const btn = document.getElementById('btnGrimpeur');
+    btn.textContent = g; // au démarrage c'est safe, le ::after CSS s'ajoute après
     renderBlocs();
 };
 
