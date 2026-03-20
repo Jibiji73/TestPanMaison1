@@ -253,7 +253,7 @@
         .blocs-list::-webkit-scrollbar-track { background: transparent; }
         .blocs-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
-        .bloc-item {
+        .bloc-item { 
             background: var(--surface2);
             border: 1px solid var(--border);
             border-radius: 8px;
@@ -267,6 +267,10 @@
             touch-action: manipulation;
         }
         .bloc-item:active { opacity: 0.7; }
+        .bloc-item.selected {
+            border-color: var(--blue);
+            background: rgba(10,132,255,0.08);
+        }
         .bloc-thumb {
             width: 40px; height: 40px;
             border-radius: 5px;
@@ -981,6 +985,7 @@ function resetAll() {
     currentBlocId = null;
     showUpdateBtn(false);
     draw();
+    renderBlocs(); // retire la surbrillance
 }
 
 // ─── ÉTOILES ───────────────────────────────────────────────────────────────
@@ -1267,7 +1272,7 @@ function renderBlocs() {
         const starsStr  = renderStars(bloc.stars || 0);
 
         const div = document.createElement('div');
-        div.className = 'bloc-item';
+        div.className = 'bloc-item' + (bloc.id === currentBlocId ? ' selected' : '');
         div.innerHTML = `
             <div class="bloc-thumb" style="background:#fff;">
                 ${bloc.thumb ? `<img src="${bloc.thumb}" alt="">` : '🧗'}
@@ -1284,8 +1289,6 @@ function renderBlocs() {
         // Double tap / dblclick pour charger le bloc
         let blocTapCount = 0, blocTapTimer = null;
         function triggerBlocLoad() {
-            div.style.borderColor = 'var(--blue)';
-            setTimeout(() => { div.style.borderColor = ''; }, 300);
             loadBloc(bloc);
         }
         div.addEventListener('touchend', (ev) => {
@@ -1319,6 +1322,7 @@ function loadBloc(bloc) {
     currentBlocId = bloc.id;
     showUpdateBtn(true);
     draw();
+    renderBlocs(); // met à jour la surbrillance
 }
 
 // ─── SÉPARATEUR REDIMENSIONNABLE ───────────────────────────────────────────
